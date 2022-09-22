@@ -83,13 +83,13 @@ function click(ev, gl, canvas, u_Position, u_FragColor){
     console.log("y: " + y);
     console.log("rect. left, top, width, height: " + rect.left + " "  + rect.top + " " + rect.width + " " + rect.height );
 
-    //Todo-1: convert x and y to canvas space and normal them to (-1, 1) for webgl to use
+    //convert x and y to canvas space and normal them to (-1, 1) for webgl to use
     x = -1 + 2 * (x / rect.width);
     y = 1 - 2 * (y / rect.height);
 
     //put mouse click position to g_points
     g_points.push([x, y]); 
-    //Todo-2: calculate color of the point
+    //calculate color of the point
     if( x >= 0.0 && y >= 0.0 ){
         g_colors.push([1.0,0.0,0.0, 1.0]) //red
     }else if( x < 0.0 && y < 0.0 ){
@@ -104,13 +104,13 @@ function click(ev, gl, canvas, u_Position, u_FragColor){
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // TODO-3: draw all points in "g_points" one-by-one
+    //draw all points in "g_points" one-by-one
     var len = g_points.length;
     for(var i = 0; i < len; i++){
         var xy = g_points[i];
         var rgba = g_colors[i];
-        gl.uniform4f(u_Position, xy[0], xy[1], 0.0, 1.0); //TODO: pass position of a point into shader to draw
-        gl.uniform4f(u_FragColor, rgba[0], rgba[1], rgba[2], 1.0); //TODO: pass color of a point into shader to draw
+        gl.uniform4f(u_Position, xy[0], xy[1], 0.0, 1.0); //pass position of a point into shader to draw
+        gl.uniform4f(u_FragColor, rgba[0], rgba[1], rgba[2], 1.0); //pass color of a point into shader to draw
 
         gl.drawArrays(gl.POINTS, 0, 1);//draw a point
     }
