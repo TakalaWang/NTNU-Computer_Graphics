@@ -55,6 +55,9 @@ function compileShader(gl, vShaderText, fShaderText){
 
 function main(){
     var canvas = document.getElementById('webgl');
+    if (!canvas) {
+        return;
+    }
 
     var gl = canvas.getContext('webgl2');
     if(!gl){
@@ -74,6 +77,12 @@ function main(){
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, n); //you are NOT allowed to change this line
 }
 
+/**
+ * 
+ * @param {*} gl 
+ * @param {*} program 
+ * @returns 
+ */
 function initVertexBuffers(gl, program){
     var vertices = new Float32Array(
         [0.5, -0.5, 0.0, 0.0, 1.0, 

@@ -9,7 +9,7 @@ var VSHADER_SOURCE = `
     varying vec4 v_Color;
     void main(){
         gl_Position = a_Position;
-        gl_PointSize = 20.0;
+        gl_PointSize = 5.0;
         v_Color = a_Color;
     }
     `;
@@ -31,7 +31,11 @@ var g_horiLines = [];
 var g_vertiLines = [];
 var g_triangles = [];
 var g_squares = [];
-var n_size = 0;
+var point_size = 0;
+var horiLines_size = 0;
+var vertiLines_size = 0;
+var triangles_size = 0;
+var squares_size = 0;
 
 //var ... of course you may need more variables
 
@@ -129,6 +133,9 @@ function keydown(ev){ //you may want to define more arguments for this function
     if(ev.key == 'b') {
         colorFlag = 'b';
     }
+
+    console.log('shapeFlag: ' + shapeFlag);
+    console.log('colorFlag: ' + colorFlag);
 }
 
 function click(ev, gl, canvas, program){ //you may want to define more arguments for this function
@@ -143,43 +150,56 @@ function click(ev, gl, canvas, program){ //you may want to define more arguments
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    var graph = [];
+    var graph = [0.0, 0.0, 0.0, 0.0, 0.0];
 
     if(colorFlag  == 'r') {
-        graph.push(1.0, 0.0, 0.0, 0.0, 0.0);
+        graph[0] = 1.0;
     }
     else if(colorFlag  == 'g') {
-        graph.push(0.0, 1.0, 0.0, 0.0, 0.0);
+        graph[1] = 1.0;
     }
     else if(colorFlag == 'b') {
-        graph.push(0.0, 0.0, 1.0, 0.0, 0.0);
+        graph[2] = 1.0;
     }
 
     if(shapeFlag == 'p') {
         graph[3] = x;
         graph[4] = y;
         g_points = g_points.concat(graph);
-        g_points = g_points.concat(graph);
-        g_points = g_points.concat(graph);
-        n_size++;
+        if(point_size == 5) {
+            g_points.splice(0, 5);
+        }
+        else {
+            point_size++;
+        }
     }
     else if(shapeFlag == 'h') {
+        graph[3] = 1;
+        graph[4] = y;
+        g_horiLines = g_horiLines.concat(graph);
         graph[3] = -1;
         graph[4] = y;
         g_horiLines = g_horiLines.concat(graph);
-        graph[3] = 1.0;
-        g_horiLines = g_horiLines.concat(graph);
-        g_horiLines = g_horiLines.concat(graph);
-        n_size++;
+        if(horiLines_size == 5) {
+            g_horiLines.splice(0, 10);
+        }
+        else {
+            horiLines_size++;
+        }
     }
     else if(shapeFlag  == 'v') {
         graph[3] = x;
+        graph[4] = 1;
+        g_vertiLines = g_vertiLines.concat(graph);
+        graph[3] = x;
         graph[4] = -1;
         g_vertiLines = g_vertiLines.concat(graph);
-        graph[4] = 1.0;
-        g_vertiLines = g_vertiLines.concat(graph);
-        g_vertiLines = g_vertiLines.concat(graph);
-        n_size++;
+        if(vertiLines_size == 5) {
+            g_vertiLines.splice(0, 10);
+        }
+        else {
+            vertiLines_size++;
+        }
     }
     else if(shapeFlag == 't') {
         graph[3] = x;
@@ -191,7 +211,12 @@ function click(ev, gl, canvas, program){ //you may want to define more arguments
         graph[3] = x + 0.0289;
         graph[4] = y - 0.0167;
         g_triangles = g_triangles.concat(graph);
-        n_size++;
+        if(triangles_size == 5) {
+            g_triangles.splice(0, 15);
+        }
+        else {
+            triangles_size++;
+        }
     }
     else if(shapeFlag == 'q') {
         graph[3] = x + 0.025;
@@ -212,34 +237,21 @@ function click(ev, gl, canvas, program){ //you may want to define more arguments
         graph[3] = x - 0.025;
         graph[4] = y - 0.025;
         g_squares = g_squares.concat(graph);
-        n_size += 2;
+        if(squares_size == 5) {
+            g_squares.splice(0, 30);
+        }
+        else {
+            squares_size++;
+        }
     }
 
     console.log('shape: ' + shapeFlag)
     console.log('color: ' + colorFlag);
     console.log('get click' + ' x: ' + x + ' y: ' + y);
-    console.log('n: ' + n_size);
     draw(gl, program);
 }
 
-
-function draw(gl, program){ //you may want to define more arguments for this function
-    //redraw whole canvas here
-    //Note: you are only allowed to same shapes of this frame by single gl.drawArrays() call
-
-    var vertices = new Float32Array(g_points.concat(g_horiLines).concat(g_vertiLines).concat(g_triangles).concat(g_squares));
-    console.log(g_points);
-    console.log(g_horiLines);
-    console.log(g_vertiLines);
-    console.log(g_triangles);
-    console.log(g_squares);
-    console.log('vertices: ' + vertices);
-
-    var vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    var FSIZE = vertices.BYTES_PER_ELEMENT;
-
+function attribLocation(gl, program, FSIZE) {
     var a_Color = gl.getAttribLocation(program, 'a_Color');
     gl.vertexAttribPointer(a_Color, 3, gl.FLOAT, false, FSIZE*5, 0);
     gl.enableVertexAttribArray(a_Color);
@@ -247,7 +259,62 @@ function draw(gl, program){ //you may want to define more arguments for this fun
     var a_Position = gl.getAttribLocation(program, 'a_Position');
     gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE*5, FSIZE*3);
     gl.enableVertexAttribArray(a_Position);
+}
 
 
-    gl.drawArrays(gl.TRIANGLES, 0, n_size * 3);
+/**
+ * 
+ * @param {WebGL2RenderingContext} gl 
+ * @param {*} program 
+ */
+function draw(gl, program){ //you may want to define more arguments for this function
+    //redraw whole canvas here
+    //Note: you are only allowed to same shapes of this frame by single gl.drawArrays() call
+
+    console.log('points size: ' + point_size + '  points: ' + g_points);
+    console.log('horiLines size: ' + horiLines_size + '  horiLines: ' + g_horiLines );
+    console.log('vertiLines size: ' + vertiLines_size + '  vertiLines: ' + g_vertiLines);
+    console.log('triangles size: ' + triangles_size + '  triangles: ' + g_triangles);
+    console.log('squares size: ' + squares_size + '  squares: ' + g_squares);
+
+    // draw points
+    var points_vertices = new Float32Array(g_points);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, points_vertices, gl.STATIC_DRAW);
+    attribLocation(gl, program, points_vertices.BYTES_PER_ELEMENT);
+    gl.drawArrays(gl.POINTS, 0, point_size);
+    console.log('points draw fin');
+
+    // draw horiLines
+    var horiLines_vertices = new Float32Array(g_horiLines);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, horiLines_vertices, gl.STATIC_DRAW);
+    attribLocation(gl, program, horiLines_vertices.BYTES_PER_ELEMENT);
+    gl.drawArrays(gl.LINES, 0, horiLines_size * 2);
+    console.log('horilines draw fin');
+
+    // draw vertiLines
+    var vertiLines_vertices = new Float32Array(g_vertiLines);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, vertiLines_vertices, gl.STATIC_DRAW);
+    attribLocation(gl, program, vertiLines_vertices.BYTES_PER_ELEMENT);
+    gl.drawArrays(gl.LINES, 0, vertiLines_size * 2);
+    console.log('vertilines draw fin');
+
+    // draw triangles
+    var trangles_vertices = new Float32Array(g_triangles);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, trangles_vertices, gl.STATIC_DRAW);
+    attribLocation(gl, program, trangles_vertices.BYTES_PER_ELEMENT);
+    gl.drawArrays(gl.TRIANGLES, 0, triangles_size * 3);
+    console.log('trangles draw fin');
+
+    // draw squares
+    var squares_vertices = new Float32Array(g_squares);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(g_squares), gl.STATIC_DRAW);
+    attribLocation(gl, program, squares_vertices.BYTES_PER_ELEMENT);
+    gl.drawArrays(gl.TRIANGLES, 0, squares_size * 6);
+    console.log('squares draw fin');
+
 }
