@@ -31,11 +31,13 @@ var g_horiLines = [];
 var g_vertiLines = [];
 var g_triangles = [];
 var g_squares = [];
+var g_circles = []
 var point_size = 0;
 var horiLines_size = 0;
 var vertiLines_size = 0;
 var triangles_size = 0;
 var squares_size = 0;
+var circles_size = 0;
 
 //var ... of course you may need more variables
 
@@ -219,29 +221,45 @@ function click(ev, gl, canvas, program){ //you may want to define more arguments
         }
     }
     else if(shapeFlag == 'q') {
-        graph[3] = x + 0.025;
-        graph[4] = y + 0.025;
-        g_squares = g_squares.concat(graph);
-        graph[3] = x + 0.025;
-        graph[4] = y - 0.025;
-        g_squares = g_squares.concat(graph);
-        graph[3] = x - 0.025;
-        graph[4] = y - 0.025;
-        g_squares = g_squares.concat(graph);
-        graph[3] = x + 0.025;
-        graph[4] = y + 0.025;
-        g_squares = g_squares.concat(graph);
-        graph[3] = x - 0.025;
-        graph[4] = y + 0.025;
-        g_squares = g_squares.concat(graph);
-        graph[3] = x - 0.025;
-        graph[4] = y - 0.025;
-        g_squares = g_squares.concat(graph);
+        var vector = [1, 1, -1, -1, 1, 1];
+        for(var i = 0; i < 3; i++) {
+            graph[3] = x + 0.025 * vector[i];
+            graph[4] = y + 0.025 * vector[i + 1];
+            g_squares = g_squares.concat(graph);
+        }
+        for(var i = 2; i < 6; i++) {
+            graph[3] = x + 0.025 * vector[i];
+            graph[4] = y + 0.025 * vector[i + 1];
+            g_squares = g_squares.concat(graph);
+        }
         if(squares_size == 5) {
             g_squares.splice(0, 30);
         }
         else {
             squares_size++;
+        }
+    }
+    else if(shapeFlag == 'c') {
+        graph[3] = x;
+        graph[4] = y;
+        var vector1 = [1, 0, 1, 0, 0, -1, 0, -1, -1, 0, -1, 0, 0, 1, 0, 1];
+        var vector2 = [1, 1, 1, -1, 1, -1, -1, -1, -1, -1, -1, 1, -1, 1, 1, 1];
+        for(var i = 0; i < 8; i++) {
+            graph[3] = x;
+            graph[4] = y;
+            g_circles = g_circles.concat(graph);
+            graph[3] = x + 0.025 * vector1[i * 2];
+            graph[4] = y + 0.025 * vector1[i * 2 + 1];
+            g_circles = g_circles.concat(graph);
+            graph[3] = x + 0.017 * vector2[i * 2];
+            graph[4] = y + 0.017 * vector2[i * 2 + 1];
+            g_circles = g_circles.concat(graph);
+        }
+        if(circles_size == 5) {
+            g_circles.splice(0, 120);
+        }
+        else {
+            circles_size++;
         }
     }
 
@@ -276,6 +294,7 @@ function draw(gl, program){ //you may want to define more arguments for this fun
     console.log('vertiLines size: ' + vertiLines_size + '  vertiLines: ' + g_vertiLines);
     console.log('triangles size: ' + triangles_size + '  triangles: ' + g_triangles);
     console.log('squares size: ' + squares_size + '  squares: ' + g_squares);
+    console.log('circles size: ' + circles_size + '  circles: ' + g_circles);
 
     // draw points
     var points_vertices = new Float32Array(g_points);
@@ -316,5 +335,13 @@ function draw(gl, program){ //you may want to define more arguments for this fun
     attribLocation(gl, program, squares_vertices.BYTES_PER_ELEMENT);
     gl.drawArrays(gl.TRIANGLES, 0, squares_size * 6);
     console.log('squares draw fin');
+
+    // circle
+    var circles_vertices = new Float32Array(g_circles);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(g_circles), gl.STATIC_DRAW);
+    attribLocation(gl, program, circles_vertices.BYTES_PER_ELEMENT);
+    gl.drawArrays(gl.TRIANGLES, 0, circles_size * 24);
+    console.log('circles draw fin');
 
 }
