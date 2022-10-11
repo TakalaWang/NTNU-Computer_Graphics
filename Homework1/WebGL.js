@@ -227,7 +227,7 @@ function click(ev, gl, canvas, program){ //you may want to define more arguments
             graph[4] = y + 0.025 * vector[i + 1];
             g_squares = g_squares.concat(graph);
         }
-        for(var i = 2; i < 6; i++) {
+        for(var i = 2; i < 5; i++) {
             graph[3] = x + 0.025 * vector[i];
             graph[4] = y + 0.025 * vector[i + 1];
             g_squares = g_squares.concat(graph);
