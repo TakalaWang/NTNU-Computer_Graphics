@@ -11,13 +11,23 @@
         </canvas>
         <script src="cuon-matrix.js"></script>
         <script src="WebGL.js"></script>
-        <div class="slidecontainer0">
+        <div class="ObjectPosition">
             Translate-X: <input type="range" min="-100" max="100" value="0" class="slider" id="Translate-X">
+            Translate-Y: <input type="range" min="-80" max="60" value="-80" class="slider" id="Translate-Y">
+            Scale: <input type="range" min="50" max="150" value="100" class="slider" id="Translate-Scale">
         </div>
-        <div class="slidecontainer1">
-            Red Rotation:<input type="range" min="0" max="45" value="0" class="slider" id="jointForRed">
-            Green Rotation:<input type="range" min="0" max="45" value="0" class="slider" id="jointForGreen">
-            Yellow Rotation:<input type="range" min="0" max="45" value="0" class="slider" id="jointForYellow">
+        <br>
+        <div class="arm1">
+            Arm1 length:<input type="range" min="30" max="80" value="40" class="slider" id="Arm1length">
+            Arm1 angle:<input type="range" min="10" max="20" value="10" class="slider" id="Arm1angle">
+        </div>
+        <div class="arm2">
+            Arm2 length:<input type="range" min="20" max="60" value="30" class="slider" id="Arm2length">
+            Arm2 angle:<input type="range" min="10" max="40" value="10" class="slider" id="Arm2angle">
+        </div>
+        <div class="Wire">
+            Wire:<input type="range" min="20" max="100" value="50" class="slider" id="Wire">
+            Cilp angle:<input type="range" min="10" max="40" value="25" class="slider" id="Clip">
         </div>
     </body>
 </html>

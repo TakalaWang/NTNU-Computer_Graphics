@@ -96,9 +96,15 @@ function popMatrix(){
 }
 //variables for tx, red,green and yellow arms angle 
 var tx = 0;
-var redAngle = 0;
-var greenAngle = 0;
-var yellowAngle = 0;
+var ty = -0.8;
+var tscale = 1.0;
+var arm1length = 0.4;
+var arm1angle = 10;
+var arm2length = 0.3;
+var arm2angle = 20;
+var wirelength = 0.5;
+var clipangle = 25;
+
 
 function main(){
     //////Get the canvas context
@@ -115,28 +121,56 @@ function main(){
     //setup the call back function of tx Sliders
     var txSlider = document.getElementById("Translate-X");
     txSlider.oninput = function() {
-        tx = this.value / 100.0; //convert sliders value to -1 to +1
+        tx = this.value / 100.0; 
         redraw(gl);
     }
 
-    //setup the call back function of red arm rotation Sliders
-    var jointRedSlider = document.getElementById("jointForRed");
-    jointRedSlider.oninput = function() {
-        redAngle = this.value;
+     //setup the call back function of ty Sliders
+    var txSlider = document.getElementById("Translate-Y");
+    txSlider.oninput = function() {
+        ty = this.value / 100.0;
         redraw(gl);
     }
 
-    //setup the call back function of green arm rotation Sliders
-    var jointGreenSlider = document.getElementById("jointForGreen");
-    jointGreenSlider.oninput = function() {
-        greenAngle = this.value; //convert sliders value to 0 to 45 degrees
+    var txSlider = document.getElementById("Translate-Scale");
+    txSlider.oninput = function() {
+        tscale = this.value / 100.0;
         redraw(gl);
     }
 
-    //setup the call back function of yellow arm rotation Sliders
-    var jointYellowSlider = document.getElementById("jointForYellow");
-    jointYellowSlider.oninput = function() {
-        yellowAngle = this.value *  -1; //convert sliders value to 0 to -45 degrees
+    var arm1lengthSlider = document.getElementById("Arm1length");
+    arm1lengthSlider.oninput = function() {
+        arm1length = this.value / 100.0;
+        redraw(gl);
+    }
+
+    var arm1angleSlider = document.getElementById("Arm1angle");
+    arm1angleSlider.oninput = function() {
+        arm1angle = this.value;
+        redraw(gl);
+    }
+
+    var arm2lengthSlider = document.getElementById("Arm2length");
+    arm2lengthSlider.oninput = function() {
+        arm2length = this.value / 100.0;
+        redraw(gl);
+    }
+
+    var arm2angleSlider = document.getElementById("Arm2angle");
+    arm2angleSlider.oninput = function() {
+        arm2angle = this.value;
+        redraw(gl);
+    }
+
+    var wireSlider = document.getElementById("Wire");
+    wireSlider.oninput = function() {
+        wirelength = this.value / 100.0;
+        redraw(gl);
+    }
+
+    var clipSlider = document.getElementById("Clip");
+    clipSlider.oninput = function() {
+        clipangle = this.value;
         redraw(gl);
     }
 }
@@ -144,54 +178,162 @@ function main(){
 //Call this funtion when we have to update the screen (eg. user input happens)
 function redraw(gl)
 {
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clearColor(0.0, 0.0, 00, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.useProgram(program);
     u_modelMatrix = gl.getUniformLocation(gl.getParameter(gl.CURRENT_PROGRAM), 'u_modelMatrix');
     
+    lineVertices = [0, 0.5, 0, -0.5];
     rectVertices = [-0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5]; 
-    var redColor = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0 ];
-    var greenColor = [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0 ];
-    var blueColor = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0 ];
-    var yellowColor = [1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0 ];
-    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
-    buffer1 = initArrayBuffer(gl, new Float32Array(blueColor), 3, gl.FLOAT, 'a_Color');
+    triangleVertices = [0, 0.33, -0.29, -0.17, 0.29, -0.17];
+    circleVertices = [0.0, 0.0];
+    for(var i = 0; i <= 360; i++) {
+        circleVertices.push(0.2 * Math.cos(i / 180 * 3.1415));
+        circleVertices.push(0.2 * Math.sin(i / 180 * 3.1415));
+    }
+    clipVertices1 = [0.3, 0.0, 0.3, -0.3, 0.2, -0.3, 0.2, -0.1, 0.0, -0.1, 0.0, 0.0];
+    clipVertices2 = [-0.3, 0.0, -0.3, -0.3, -0.2, -0.3, -0.2, -0.1, 0.0, -0.1, 0.0, 0.0];
 
+    var redColor = [1.0, 0.0, 0.0 ];
+    var greenColor = [0.0, 1.0, 0.0 ];
+    var blueColor = [0.0, 0.0, 1.0 ];
+    var yellowColor = [1.0, 1.0, 0.0 ];
+    var purpleColor = [1.0, 0.0, 1.0 ];
+    var cyanColor = [0.0, 1.0, 1.0 ];
+    var whiteColor = [1.0, 1.0, 1.0 ];
+    
     transformMat.setIdentity();
-    transformMat.translate(tx, -0.5, 0.0);
+
+    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(4).fill(blueColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.scale(tscale, tscale, 0.0);
+    transformMat.translate(tx, ty, 0.0);
     pushMatrix();
-    transformMat.scale(1.0, 0.4, 0.0);
+    transformMat.scale(0.6, 0.2, 0.0);
     gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length/2);//draw the blue one
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length / 2);//draw the car
 
     popMatrix();
-    buffer1 = initArrayBuffer(gl, new Float32Array(redColor), 3, gl.FLOAT, 'a_Color');
-    transformMat.translate(0.0, 0.2, 0.0);
-    transformMat.rotate(redAngle, 0.0, 0.0, 1.0);
-    transformMat.translate(0.0, 0.5, 0.0);
+    buffer0 = initArrayBuffer(gl, new Float32Array(circleVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(362).fill(cyanColor).flat()), 3, gl.FLOAT, 'a_Color');
     pushMatrix();
-    transformMat.scale(0.2, 1.2, 0.0);
+    transformMat.translate(0.2, -0.1, 0.0); 
+    transformMat.scale(0.3, 0.3, 0.0, 1.0);
     gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length/2);//draw the red one
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, circleVertices.length / 2);//draw the wheel1
 
     popMatrix();
-    buffer1 = initArrayBuffer(gl, new Float32Array(greenColor), 3, gl.FLOAT, 'a_Color');
-    transformMat.translate(0.0, 0.5, 0.0);
-    transformMat.rotate(greenAngle, 0.0, 0.0, 1.0);
-    transformMat.translate(0.2, 0.0, 0.0);
-    pushMatrix(); 
-    transformMat.scale(0.6, 0.15, 0.0);
+    buffer0 = initArrayBuffer(gl, new Float32Array(circleVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(362).fill(cyanColor).flat()), 3, gl.FLOAT, 'a_Color');
+    pushMatrix();
+    transformMat.translate(-0.2, -0.1, 0.0); 
+    transformMat.scale(0.3, 0.3, 0.0, 1.0);
     gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length/2);//draw the green one
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, circleVertices.length / 2);//draw the wheel2
 
     popMatrix();
-    buffer1 = initArrayBuffer(gl, new Float32Array(yellowColor), 3, gl.FLOAT, 'a_Color');
-    transformMat.translate(0.25, 0.03, 0.0);
-    transformMat.rotate(yellowAngle, 0.0, 0.0, 1.0);
-    transformMat.translate(0.0, -0.2, 0.0);
+    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(4).fill(blueColor).flat()), 3, gl.FLOAT, 'a_Color');
     pushMatrix();
-    transformMat.scale(0.1, 0.5, 0.0);
+    transformMat.translate(0.2, 0.15, 0.0);
+    transformMat.scale(0.05, 0.1, 0.0);
     gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length/2);//draw the green one
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length / 2);//draw the emit
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(4).fill(blueColor).flat()), 3, gl.FLOAT, 'a_Color');
+    pushMatrix();
+    transformMat.translate(-0.2, 0.15, 0.0);
+    transformMat.scale(0.2, 0.15, 0.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length / 2);//draw the roof
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(4).fill(whiteColor).flat()), 3, gl.FLOAT, 'a_Color');
+    pushMatrix();
+    transformMat.translate(-0.2, 0.15, 0.0);
+    transformMat.scale(0.12, 0.09, 0.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length / 2);//draw the window
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(triangleVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(3).fill(greenColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.translate(0.0, 0.1, 0.0); 
+    pushMatrix();
+    transformMat.scale(0.4, 0.4, 0.0, 1.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, triangleVertices.length / 2);//joint1
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(4).fill(yellowColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.rotate(arm1angle, 0.0, 0.0);
+    transformMat.translate(0.0, arm1length, 0.0);
+    pushMatrix();
+    transformMat.translate(0.0, -arm1length / 2, 0.0);
+    transformMat.scale(0.1, arm1length, 0.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length / 2);//draw the arm1
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(circleVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(362).fill(redColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.translate(0.0, 0.06, 0.0);
+    pushMatrix();
+    transformMat.scale(0.3, 0.3, 0.0, 1.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, circleVertices.length / 2); //draw the joint2
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(rectVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(4).fill(yellowColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.rotate(arm2angle, 0.0, 0.0);
+    transformMat.translate(0.0, arm2length + 0.06, 0.0);
+    pushMatrix();
+    transformMat.translate(0.0, -arm2length / 2, 0.0);
+    transformMat.scale(0.08, arm2length, 0.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, rectVertices.length / 2);//draw the arm2
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(circleVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(362).fill(redColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.translate(-0.01, 0.04, 0.0);
+    pushMatrix();
+    transformMat.scale(0.2, 0.2, 0.0, 1.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, circleVertices.length / 2); //draw the joint2
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(lineVertices), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(2).fill(whiteColor).flat()), 3, gl.FLOAT, 'a_Color');
+    transformMat.rotate(-arm1angle - arm2angle, 0.0, 0.0);
+    transformMat.translate(0.0, -wirelength, 0.0);
+    pushMatrix();
+    transformMat.translate(0.0, wirelength / 2, 0.0);
+    transformMat.scale(1.0, wirelength, 0.0, 1.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.LINES, 0, lineVertices.length / 2); //draw the Wire
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(clipVertices1), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(6).fill(purpleColor).flat()), 3, gl.FLOAT, 'a_Color');
+    pushMatrix();
+    transformMat.scale(0.3, 0.3, 0.0, 1.0);
+    transformMat.rotate(-clipangle, 0.0, 0.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, clipVertices1.length / 2); //draw the Clip1
+
+    popMatrix();
+    buffer0 = initArrayBuffer(gl, new Float32Array(clipVertices2), 2, gl.FLOAT, 'a_Position');
+    buffer1 = initArrayBuffer(gl, new Float32Array(Array(6).fill(purpleColor).flat()), 3, gl.FLOAT, 'a_Color');
+    pushMatrix();
+    transformMat.scale(0.3, 0.3, 0.0, 1.0);
+    transformMat.rotate(clipangle, 0.0, 0.0);
+    gl.uniformMatrix4fv(u_modelMatrix, false, transformMat.elements);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, clipVertices2.length / 2); //draw the Clip2
 }
