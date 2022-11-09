@@ -1,4 +1,5 @@
-*/*.zip
-./Examples/*
-*/*.mov
-*/*.ppt
+*.zip
+Examples/*
+*.mov
+*.ppt
+slide/*
