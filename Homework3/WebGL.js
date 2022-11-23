@@ -4,33 +4,39 @@ var VSHADER_SOURCE = `
     uniform mat4 u_MvpMatrix;
     uniform mat4 u_modelMatrix;
     uniform mat4 u_normalMatrix;
+    uniform mat4 u_ProjMatrixFromLight;
+    uniform mat4 u_MvpMatrixOfLight;
+    varying vec4 v_PositionFromLight;
     varying vec3 v_Normal;
     varying vec3 v_PositionInWorld;
     void main(){
         gl_Position = u_MvpMatrix * a_Position;
         v_PositionInWorld = (u_modelMatrix * a_Position).xyz; 
         v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
+        v_PositionFromLight = u_MvpMatrixOfLight * a_Position; //for shadow
     }    
 `;
 
 var FSHADER_SOURCE = `
     precision mediump float;
-    uniform vec3 u_LightPosition;
+    uniform mat4 u_LightMdlMatrix;
     uniform vec3 u_ViewPosition;
     uniform float u_Ka;
     uniform float u_Kd;
     uniform float u_Ks;
     uniform float u_shininess;
     uniform vec3 u_Color;
+    uniform sampler2D u_ShadowMap;
     varying vec3 v_Normal;
     varying vec3 v_PositionInWorld;
-    void main(){
-        // let ambient and diffuse color are u_Color 
-        // (you can also input them from ouside and make them different)
+    varying vec2 v_TexCoord;
+    varying vec4 v_PositionFromLight;
+    const float deMachThreshold = 0.005; //0.001 if having high precision depth
+    void main(){ 
         vec3 ambientLightColor = u_Color;
         vec3 diffuseLightColor = u_Color;
-        // assume white specular light (you can also input it from ouside)
         vec3 specularLightColor = vec3(1.0, 1.0, 1.0);        
+        vec3 u_LightPosition = (u_LightMdlMatrix * vec4(0.0, 4.0, -5.0, 1.0)).xyz;
 
         vec3 ambient = ambientLightColor * u_Ka;
 
@@ -48,9 +54,32 @@ var FSHADER_SOURCE = `
             specular = u_Ks * pow(specAngle, u_shininess) * specularLightColor; 
         }
 
-        gl_FragColor = vec4( ambient + diffuse + specular, 1.0 );
+        //***** shadow
+        vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
+        vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);
+        /////////******** LOW precision depth implementation ********///////////
+        float depth = rgbaDepth.r;
+        float visibility = (shadowCoord.z > depth + deMachThreshold) ? 1.0 : 1.0;
+
+        gl_FragColor = vec4( (ambient + diffuse + specular)*visibility, 1.0);
     }
 `;
+
+var VSHADER_SHADOW_SOURCE = `
+      attribute vec4 a_Position;
+      uniform mat4 u_MvpMatrix;
+      void main(){
+          gl_Position = u_MvpMatrix * a_Position;
+      }
+  `;
+
+var FSHADER_SHADOW_SOURCE = `
+      precision mediump float;
+      void main(){
+        /////////** LOW precision depth implementation **/////
+        gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
+      }
+  `;
 
 function compileShader(gl, vShaderText, fShaderText) {
     //////Build vertex and fragment shader objects
@@ -156,27 +185,22 @@ var mouseDragging = false;
 var angleX = 0,
     angleY = 0;
 var gl, canvas;
-var mvpMatrix = new Matrix4();
-var modelMatrix = new Matrix4();
-var normalMatrix = new Matrix4();
+var modelMatrix;
+var normalMatrix;
 var nVertex;
-var cameraX = 0,
-    cameraY = 8,
-    cameraZ = 10;
-
-var groundComponents = [];
-var carComponents = [];
+var cameraX = 3,
+    cameraY = 3,
+    cameraZ = 7;
+var lightX = 0,
+    lightY = 4,
+    lightZ = -5;
+var offScreenWidth = 2048,
+    offScreenHeight = 2048;
+var fbo;
 
 var room = 0;
 var tx = 0;
-var ty = -0.8;
-var tscale = 1.0;
-var arm1length = 0.4;
-var arm1angle = 10;
-var arm2length = 0.3;
-var arm2angle = 20;
-var wirelength = 0.5;
-var clipangle = 25;
+var tz = 0;
 
 async function main() {
     canvas = document.getElementById("webgl");
@@ -186,138 +210,177 @@ async function main() {
         return;
     }
 
+    //setup shaders and prepare shader variables
+    shadowProgram = compileShader(
+        gl,
+        VSHADER_SHADOW_SOURCE,
+        FSHADER_SHADOW_SOURCE
+    );
+    shadowProgram.a_Position = gl.getAttribLocation(
+        shadowProgram,
+        "a_Position"
+    );
+    shadowProgram.u_MvpMatrix = gl.getUniformLocation(
+        shadowProgram,
+        "u_MvpMatrix"
+    );
+
     program = compileShader(gl, VSHADER_SOURCE, FSHADER_SOURCE);
-
-    gl.useProgram(program);
-
     program.a_Position = gl.getAttribLocation(program, "a_Position");
     program.a_Normal = gl.getAttribLocation(program, "a_Normal");
     program.u_MvpMatrix = gl.getUniformLocation(program, "u_MvpMatrix");
     program.u_modelMatrix = gl.getUniformLocation(program, "u_modelMatrix");
     program.u_normalMatrix = gl.getUniformLocation(program, "u_normalMatrix");
-    program.u_LightPosition = gl.getUniformLocation(program, "u_LightPosition");
+    program.u_LightMdlMatrix = gl.getUniformLocation(
+        program,
+        "u_LightMdlMatrix"
+    );
     program.u_ViewPosition = gl.getUniformLocation(program, "u_ViewPosition");
+    program.u_MvpMatrixOfLight = gl.getUniformLocation(
+        program,
+        "u_MvpMatrixOfLight"
+    );
     program.u_Ka = gl.getUniformLocation(program, "u_Ka");
     program.u_Kd = gl.getUniformLocation(program, "u_Kd");
     program.u_Ks = gl.getUniformLocation(program, "u_Ks");
     program.u_shininess = gl.getUniformLocation(program, "u_shininess");
+    program.u_ShadowMap = gl.getUniformLocation(program, "u_ShadowMap");
     program.u_Color = gl.getUniformLocation(program, "u_Color");
 
-    ground = await parseOBJ("./object/cube.obj");
-    for (let i = 0; i < ground.geometries.length; i++) {
-        let o = initVertexBufferForLaterUse(
-            gl,
-            ground.geometries[i].data.position,
-            ground.geometries[i].data.normal,
-            ground.geometries[i].data.texcoord
-        );
-        groundComponents.push(o);
-    }
+    gl.useProgram(program);
 
-    car = await parseOBJ("./object/cube.obj");
-    for (let i = 0; i < car.geometries.length; i++) {
-        let o = initVertexBufferForLaterUse(
-            gl,
-            car.geometries[i].data.position,
-            car.geometries[i].data.normal,
-            car.geometries[i].data.texcoord
-        );
-        carComponents.push(o);
-    }
+    fbo = initFrameBuffer(gl);
 
+    load_all_model();
     draw();
-    interface(gl, canvas);
+    interface();
 }
 
-function draw() {
-    gl.clearColor(0, 0, 0, 1);
-    gl.enable(gl.DEPTH_TEST);
+async function draw() {
+    // off screen shadow
+    gl.useProgram(shadowProgram);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0, 0, offScreenWidth, offScreenHeight);
+    gl.clearColor(0.0, 0.0, 0.0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
 
-    init_camera();
-    init_light();
+    set_mdl();
 
-    draw_ground();
-    // draw_car();
+    // on scree rendering
+    gl.useProgram(program);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0.4, 0.4, 0.4, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+
+    draw_all_object();
 }
 
-function interface() {
-    canvas.onmousedown = function (ev) {
-        mouseDown(ev);
-    };
-    canvas.onmousemove = function (ev) {
-        mouseMove(ev);
-    };
-    canvas.onmouseup = function (ev) {
-        mouseUp(ev);
-    };
-
-    var txSlider = document.getElementById("Room");
-    txSlider.oninput = function () {
-        room = this.value;
-        draw();
-    };
-
-    //setup the call back function of tx Sliders
-    var txSlider = document.getElementById("Translate-X");
-    txSlider.oninput = function () {
-        tx = this.value / 100.0;
-        draw();
-    };
-
-    //setup the call back function of ty Sliders
-    var txSlider = document.getElementById("Translate-Y");
-    txSlider.oninput = function () {
-        ty = this.value / 100.0;
-        draw();
-    };
-
-    var txSlider = document.getElementById("Translate-Scale");
-    txSlider.oninput = function () {
-        tscale = this.value / 100.0;
-        draw();
-    };
-
-    var arm1lengthSlider = document.getElementById("Arm1length");
-    arm1lengthSlider.oninput = function () {
-        arm1length = this.value / 100.0;
-        draw();
-    };
-
-    var arm1angleSlider = document.getElementById("Arm1angle");
-    arm1angleSlider.oninput = function () {
-        arm1angle = this.value;
-        draw();
-    };
-
-    var arm2lengthSlider = document.getElementById("Arm2length");
-    arm2lengthSlider.oninput = function () {
-        arm2length = this.value / 100.0;
-        draw();
-    };
-
-    var arm2angleSlider = document.getElementById("Arm2angle");
-    arm2angleSlider.oninput = function () {
-        arm2angle = this.value;
-        draw();
-    };
-
-    var wireSlider = document.getElementById("Wire");
-    wireSlider.oninput = function () {
-        wirelength = this.value / 100.0;
-        draw();
-    };
-
-    var clipSlider = document.getElementById("Clip");
-    clipSlider.oninput = function () {
-        clipangle = this.value;
-        draw();
-    };
+async function load_one_model(file_path) {
+    obj_data = [];
+    response = await fetch(file_path);
+    text = await response.text();
+    obj = parseOBJ(text);
+    for (let i = 0; i < obj.geometries.length; i++) {
+        let o = initVertexBufferForLaterUse(
+            gl,
+            obj.geometries[i].data.position,
+            obj.geometries[i].data.normal,
+            obj.geometries[i].data.texcoord
+        );
+        obj_data.push(o);
+    }
+    return obj_data;
 }
 
-async function parseOBJ(objname) {
-    text = await fetch(objname).then((response) => response.text());
+function drawOffScreen(obj, mdlMatrix) {
+    var mvpFromLight = new Matrix4();
+    //model Matrix (part of the mvp matrix)
+    let modelMatrix = new Matrix4();
+    modelMatrix.setRotate(angleY, 1, 0, 0);
+    modelMatrix.rotate(angleX, 0, 1, 0);
+    modelMatrix.multiply(mdlMatrix);
+    //mvp: projection * view * model matrix
+    mvpFromLight.setPerspective(130, offScreenWidth / offScreenHeight, 1, 100);
+    mvpFromLight.lookAt(lightX, lightY, lightZ, 0, 0, 0, 0, 1, 0);
+    mvpFromLight.multiply(modelMatrix);
 
+    gl.uniformMatrix4fv(
+        shadowProgram.u_MvpMatrix,
+        false,
+        mvpFromLight.elements
+    );
+
+    for (let i = 0; i < obj.length; i++) {
+        initAttributeVariable(
+            gl,
+            shadowProgram.a_Position,
+            obj[i].vertexBuffer
+        );
+        gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
+    }
+
+    return mvpFromLight;
+}
+
+//obj: the object components
+//mdlMatrix: the model matrix without mouse rotation
+//colorR, G, B: object color
+function drawOneObjectOnScreen(
+    obj,
+    mdlMatrix,
+    mvpFromLight,
+    colorR,
+    colorG,
+    colorB
+) {
+    var mvpFromCamera = new Matrix4();
+    //model Matrix (part of the mvp matrix)
+    let modelMatrix = new Matrix4();
+    modelMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
+    modelMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
+    gl.uniformMatrix4fv(program.u_LightMdlMatrix, false, modelMatrix.elements);
+    modelMatrix.multiply(mdlMatrix);
+    //mvp: projection * view * model matrix
+    mvpFromCamera.setPerspective(60 - room, 1, 1, 15);
+    mvpFromCamera.lookAt(cameraX, cameraY, cameraZ, 0, 0, -5, 0, 1, 0);
+    mvpFromCamera.multiply(modelMatrix);
+
+    //normal matrix
+    let normalMatrix = new Matrix4();
+    normalMatrix.setInverseOf(modelMatrix);
+    normalMatrix.transpose();
+
+    gl.uniform3f(program.u_ViewPosition, cameraX, cameraY, cameraZ);
+    gl.uniform1f(program.u_Ka, 0.2);
+    gl.uniform1f(program.u_Kd, 0.7);
+    gl.uniform1f(program.u_Ks, 1.0);
+    gl.uniform1f(program.u_shininess, 10.0);
+    gl.uniform1i(program.u_ShadowMap, 0);
+    gl.uniform3f(program.u_Color, colorR, colorG, colorB);
+
+    gl.uniformMatrix4fv(program.u_MvpMatrix, false, mvpFromCamera.elements);
+    gl.uniformMatrix4fv(program.u_modelMatrix, false, modelMatrix.elements);
+    gl.uniformMatrix4fv(program.u_normalMatrix, false, normalMatrix.elements);
+    gl.uniformMatrix4fv(
+        program.u_MvpMatrixOfLight,
+        false,
+        mvpFromLight.elements
+    );
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
+
+    for (let i = 0; i < obj.length; i++) {
+        initAttributeVariable(gl, program.a_Position, obj[i].vertexBuffer);
+        initAttributeVariable(gl, program.a_Normal, obj[i].normalBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
+    }
+}
+
+function parseOBJ(text) {
     // because indices are base 1 let's just fill in the 0th data
     const objPositions = [[0, 0, 0]];
     const objTexcoords = [[0, 0]];
@@ -459,6 +522,36 @@ async function parseOBJ(objname) {
     };
 }
 
+function interface() {
+    canvas.onmousedown = function (ev) {
+        mouseDown(ev);
+    };
+    canvas.onmousemove = function (ev) {
+        mouseMove(ev);
+    };
+    canvas.onmouseup = function (ev) {
+        mouseUp(ev);
+    };
+    var Slider = document.getElementById("Room");
+    Slider.oninput = function () {
+        room = this.value;
+        draw();
+    };
+    //setup the call back function of tx Sliders
+    var Slider = document.getElementById("Translate-X");
+    Slider.oninput = function () {
+        tx = this.value / 100.0;
+        draw();
+    };
+
+    //setup the call back function of ty Sliders
+    var Slider = document.getElementById("Translate-Z");
+    Slider.oninput = function () {
+        tz = this.value / 100.0;
+        draw();
+    };
+}
+
 function mouseDown(ev) {
     var x = ev.clientX;
     var y = ev.clientY;
@@ -489,4 +582,51 @@ function mouseMove(ev) {
     mouseLastY = y;
 
     draw();
+}
+
+function initFrameBuffer(gl) {
+    //create and set up a texture object as the color buffer
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        offScreenWidth,
+        offScreenHeight,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+    //create and setup a render buffer as the depth buffer
+    var depthBuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.renderbufferStorage(
+        gl.RENDERBUFFER,
+        gl.DEPTH_COMPONENT16,
+        offScreenWidth,
+        offScreenHeight
+    );
+
+    //create and setup framebuffer: linke the color and depth buffer to it
+    var frameBuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+    gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        texture,
+        0
+    );
+    gl.framebufferRenderbuffer(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_ATTACHMENT,
+        gl.RENDERBUFFER,
+        depthBuffer
+    );
+    frameBuffer.texture = texture;
+    return frameBuffer;
 }
