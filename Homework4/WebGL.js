@@ -1,86 +1,3 @@
-var VSHADER_SOURCE = `
-    attribute vec4 a_Position;
-    attribute vec4 a_Normal;
-    uniform mat4 u_MvpMatrix;
-    uniform mat4 u_modelMatrix;
-    uniform mat4 u_normalMatrix;
-    uniform mat4 u_ProjMatrixFromLight;
-    uniform mat4 u_MvpMatrixOfLight;
-    varying vec4 v_PositionFromLight;
-    varying vec3 v_Normal;
-    varying vec3 v_PositionInWorld;
-    void main(){
-        gl_Position = u_MvpMatrix * a_Position;
-        v_PositionInWorld = (u_modelMatrix * a_Position).xyz; 
-        v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
-        v_PositionFromLight = u_MvpMatrixOfLight * a_Position; //for shadow
-    }    
-`;
-
-var FSHADER_SOURCE = `
-    precision mediump float;
-    uniform mat4 u_LightMdlMatrix;
-    uniform vec3 u_ViewPosition;
-    uniform float u_Ka;
-    uniform float u_Kd;
-    uniform float u_Ks;
-    uniform float u_shininess;
-    uniform vec3 u_Color;
-    uniform sampler2D u_ShadowMap;
-    varying vec3 v_Normal;
-    varying vec3 v_PositionInWorld;
-    varying vec2 v_TexCoord;
-    varying vec4 v_PositionFromLight;
-    const float deMachThreshold = 0.005; //0.001 if having high precision depth
-    void main(){ 
-        vec3 ambientLightColor = u_Color;
-        vec3 diffuseLightColor = u_Color;
-        vec3 specularLightColor = vec3(1.0, 1.0, 1.0);        
-        vec3 u_LightPosition = (u_LightMdlMatrix * vec4(-3.0, 4.0, 0.0, 1.0)).xyz;
-
-        vec3 ambient = ambientLightColor * u_Ka;
-
-        vec3 normal = normalize(v_Normal);
-        vec3 lightDirection = normalize(u_LightPosition - v_PositionInWorld);
-        float nDotL = max(dot(lightDirection, normal), 0.0);
-        vec3 diffuse = diffuseLightColor * u_Kd * nDotL;
-
-        vec3 specular = vec3(0.0, 0.0, 0.0);
-        if(nDotL > 0.0) {
-            vec3 R = reflect(-lightDirection, normal);
-            // V: the vector, point to viewer       
-            vec3 V = normalize(u_ViewPosition - v_PositionInWorld); 
-            float specAngle = clamp(dot(R, V), 0.0, 1.0);
-            specular = u_Ks * pow(specAngle, u_shininess) * specularLightColor; 
-        }
-
-        //***** shadow
-        vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
-        vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);
-        /////////******** LOW precision depth implementation ********///////////
-        float depth = rgbaDepth.r;
-        float visibility = (shadowCoord.z > depth + deMachThreshold) ? 0.3 : 1.0;
-
-        gl_FragColor = vec4( (ambient + diffuse + specular)*visibility, 1.0);
-    }
-`;
-
-var VSHADER_SHADOW_SOURCE = `
-      attribute vec4 a_Position;
-      uniform mat4 u_MvpMatrix;
-      void main(){
-          gl_Position = u_MvpMatrix * a_Position;
-      }
-  `;
-
-var FSHADER_SHADOW_SOURCE = `
-      precision mediump float;
-      void main(){
-        /////////** LOW precision depth implementation **/////
-        gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
-      }
-  `;
-
 function compileShader(gl, vShaderText, fShaderText) {
     //////Build vertex and fragment shader objects
     var vertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -191,11 +108,12 @@ var nVertex;
 var cameraX = 3,
     cameraY = 3,
     cameraZ = 7;
-var lightX = -3,
+var lightX = -4,
     lightY = 3,
     lightZ = 0;
 var offScreenWidth = 2048,
     offScreenHeight = 2048;
+var textures = {};
 var fbo;
 
 var room = 0;
@@ -227,6 +145,7 @@ async function main() {
 
     program = compileShader(gl, VSHADER_SOURCE, FSHADER_SOURCE);
     program.a_Position = gl.getAttribLocation(program, "a_Position");
+    program.a_TexCoord = gl.getAttribLocation(program, "a_TexCoord");
     program.a_Normal = gl.getAttribLocation(program, "a_Normal");
     program.u_MvpMatrix = gl.getUniformLocation(program, "u_MvpMatrix");
     program.u_modelMatrix = gl.getUniformLocation(program, "u_modelMatrix");
@@ -251,6 +170,7 @@ async function main() {
 
     fbo = initFrameBuffer(gl);
 
+    load_all_texture();
     load_all_model();
     draw();
     interface();
@@ -295,13 +215,62 @@ async function load_one_model(file_path) {
     return obj_data;
 }
 
+async function load_all_texture() {
+    var imageChess = new Image();
+    imageChess.onload = function () {
+        initTexture(gl, imageChess, "chessTex");
+    };
+    imageChess.src = "./texture/chess.jpg";
+
+    var imageGround = new Image();
+    imageGround.onload = function () {
+        initTexture(gl, imageGround, "groundTex");
+    };
+    imageGround.src = "./texture/ground.jpeg";
+
+    var imageMirror = new Image();
+    imageMirror.onload = function () {
+        initTexture(gl, imageMirror, "mirrorTex");
+    };
+    imageMirror.src = "./texture/mirror.jpg";
+
+    var imageCat = new Image();
+    imageCat.onload = function () {
+        initTexture(gl, imageCat, "catTex");
+    };
+    imageCat.src = "./texture/cat.jpg";
+
+    var imageJoint = new Image();
+    imageJoint.onload = function () {
+        initTexture(gl, imageJoint, "jointTex");
+    };
+    imageJoint.src = "./texture/joint.png";
+
+    var imageWood = new Image();
+    imageWood.onload = function () {
+        initTexture(gl, imageWood, "woodTex");
+    };
+    imageWood.src = "./texture/wood.jpeg";
+
+    var imageTire = new Image();
+    imageTire.onload = function () {
+        initTexture(gl, imageTire, "tireTex");
+    };
+    imageTire.src = "./texture/tire.png";
+}
+
 function drawOffScreen(obj, mdlMatrix) {
     var mvpFromLight = new Matrix4();
     //model Matrix (part of the mvp matrix)
     let modelMatrix = new Matrix4();
     modelMatrix.multiply(mdlMatrix);
     //mvp: projection * view * model matrix
-    mvpFromLight.setPerspective(130, offScreenWidth / offScreenHeight, 1, 100);
+    mvpFromLight.setPerspective(
+        150,
+        (offScreenWidth / offScreenHeight) * 2,
+        1,
+        200
+    );
     mvpFromLight.lookAt(lightX, lightY, lightZ, 0, 0, 0, 0, 1, 0);
     mvpFromLight.multiply(modelMatrix);
 
@@ -332,7 +301,8 @@ function drawOneObjectOnScreen(
     mvpFromLight,
     colorR,
     colorG,
-    colorB
+    colorB,
+    texture
 ) {
     var mvpFromCamera = new Matrix4();
     //model Matrix (part of the mvp matrix)
@@ -359,6 +329,10 @@ function drawOneObjectOnScreen(
     gl.uniform1i(program.u_ShadowMap, 0);
     gl.uniform3f(program.u_Color, colorR, colorG, colorB);
 
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, textures[texture]);
+    gl.uniform1i(program.u_Sampler, 0);
+
     gl.uniformMatrix4fv(program.u_MvpMatrix, false, mvpFromCamera.elements);
     gl.uniformMatrix4fv(program.u_modelMatrix, false, modelMatrix.elements);
     gl.uniformMatrix4fv(program.u_normalMatrix, false, normalMatrix.elements);
@@ -368,11 +342,9 @@ function drawOneObjectOnScreen(
         mvpFromLight.elements
     );
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
-
     for (let i = 0; i < obj.length; i++) {
         initAttributeVariable(gl, program.a_Position, obj[i].vertexBuffer);
+        initAttributeVariable(gl, program.a_TexCoord, obj[i].texCoordBuffer);
         initAttributeVariable(gl, program.a_Normal, obj[i].normalBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
     }
@@ -627,4 +599,18 @@ function initFrameBuffer(gl) {
     );
     frameBuffer.texture = texture;
     return frameBuffer;
+}
+
+function initTexture(gl, img, texKey) {
+    var tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    // Set the parameters so we can render any size image.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    // Upload the image into the texture.
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+
+    textures[texKey] = tex;
+    draw();
 }

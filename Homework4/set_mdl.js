@@ -1,6 +1,7 @@
 let cubeObj = [];
 let tireObj = [];
 let cylinderObj = [];
+
 async function load_all_model() {
     cubeObj = await load_one_model("./object/cube.obj");
     tireObj = await load_one_model("./object/tire.obj");
@@ -99,7 +100,7 @@ function set_mdl() {
     joint1MdlMatrix.rotate(tz * 5.5, 0.0, -1.0, 0.0);
     joint1MdlMatrix.translate(1.7, 0, 0.65);
     joint1MdlMatrix.scale(0.025, 0.01, 0.025);
-    joint1MvpFromLight = drawOffScreen(cubeObj, joint1MdlMatrix);
+    joint1MvpFromLight = drawOffScreen(cylinderObj, joint1MdlMatrix);
 
     // set arm2 mdl
     arm2MdlMatrix.setTranslate(tx, 0.5, tz + 0.7);
@@ -119,7 +120,7 @@ function set_mdl() {
     joint2MdlMatrix.rotate((tx + 10) * 5, 0.0, -1.0, 0.0);
     joint2MdlMatrix.translate(1.2, 0.0, 0.0);
     joint2MdlMatrix.scale(0.025, 0.01, 0.025);
-    joint2MvpFromLight = drawOffScreen(cubeObj, joint2MdlMatrix);
+    joint2MvpFromLight = drawOffScreen(cylinderObj, joint2MdlMatrix);
 
     // set wire mdl
     wireMdlMatrix.setTranslate(tx, 0.5, tz + 0.7);
@@ -152,7 +153,8 @@ function draw_all_object() {
         lightMvpFromLight,
         1.0,
         1.0,
-        1.0
+        1.0,
+        "groundTex"
     );
     //draw ground
     drawOneObjectOnScreen(
@@ -161,7 +163,8 @@ function draw_all_object() {
         groundMvpFromLight,
         1.0,
         0.4,
-        0.4
+        0.4,
+        "groundTex"
     );
     //draw car
     drawOneObjectOnScreen(
@@ -170,7 +173,8 @@ function draw_all_object() {
         carMvpFromLight,
         0.4,
         0.4,
-        1.0
+        1.0,
+        "mirrorTex"
     );
     //draw carbox
     drawOneObjectOnScreen(
@@ -179,7 +183,8 @@ function draw_all_object() {
         carboxMvpFromLight,
         0.4,
         0.4,
-        1.0
+        1.0,
+        "catTex"
     );
     //draw rb tire
     drawOneObjectOnScreen(
@@ -188,7 +193,8 @@ function draw_all_object() {
         rbtireMvpFromLight,
         0.0,
         0.0,
-        0.0
+        0.0,
+        "tireTex"
     );
     //draw lb tire
     drawOneObjectOnScreen(
@@ -197,7 +203,8 @@ function draw_all_object() {
         lbtireMvpFromLight,
         0.0,
         0.0,
-        0.0
+        0.0,
+        "tireTex"
     );
     //draw rf tire
     drawOneObjectOnScreen(
@@ -206,7 +213,8 @@ function draw_all_object() {
         rftireMvpFromLight,
         0.0,
         0.0,
-        0.0
+        0.0,
+        "tireTex"
     );
     //draw lf tire
     drawOneObjectOnScreen(
@@ -215,7 +223,8 @@ function draw_all_object() {
         lftireMvpFromLight,
         0.0,
         0.0,
-        0.0
+        0.0,
+        "tireTex"
     );
     //draw arm1
     drawOneObjectOnScreen(
@@ -224,7 +233,8 @@ function draw_all_object() {
         arm1MvpFromLight,
         0.4,
         1.0,
-        0.4
+        0.4,
+        "woodTex"
     );
     //draw joint1
     drawOneObjectOnScreen(
@@ -233,7 +243,8 @@ function draw_all_object() {
         joint1MvpFromLight,
         1.0,
         1.0,
-        0.4
+        0.4,
+        "jointTex"
     );
     //draw arm2
     drawOneObjectOnScreen(
@@ -242,7 +253,8 @@ function draw_all_object() {
         arm2MvpFromLight,
         0.4,
         1.0,
-        1.0
+        1.0,
+        "woodTex"
     );
     //draw joint2
     drawOneObjectOnScreen(
@@ -251,16 +263,17 @@ function draw_all_object() {
         joint2MvpFromLight,
         1.0,
         1.0,
-        0.4
+        0.4,
+        "jointTex"
     );
     //draw wire
     drawOneObjectOnScreen(
         cylinderObj,
         wireMdlMatrix,
         wireMvpFromLight,
-        1.0,
-        0.4,
-        1.0
+        0.0,
+        0.0,
+        0.0
     );
     //draw thing
     drawOneObjectOnScreen(
@@ -269,6 +282,7 @@ function draw_all_object() {
         thingMvpFromLight,
         1.0,
         1.0,
-        1.0
+        1.0,
+        "chessTex"
     );
 }
