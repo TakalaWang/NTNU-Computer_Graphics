@@ -9,16 +9,12 @@
         <canvas id="webgl" width="800" height="800">
             Please use a browser that support "canvas"
         </canvas>
-        <script src="cuon-matrix.js"></script>
-        <script src="shader.js"></script>
-        <script src="WebGL.js"></script>
-        <script src="set_mdl.js"></script>
         <div class="Room">
             Room:
             <input
                 type="range"
-                min="-29"
-                max="29"
+                min="-59"
+                max="59"
                 value="0"
                 class="slider"
                 id="Room"
@@ -44,6 +40,9 @@
                 id="Translate-Z"
             />
         </div>
-        <br />
+
+        <script src="cuon-matrix.js"></script>
+        <script src="set_mdl.js"></script>
+        <script src="WebGL.js"></script>
     </body>
 </html>

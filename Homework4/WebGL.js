@@ -1,3 +1,86 @@
+var VSHADER_SOURCE = `
+    attribute vec4 a_Position;
+    attribute vec4 a_Normal;
+    attribute vec2 a_TexCoord;
+    uniform mat4 u_MvpMatrix;
+    uniform mat4 u_modelMatrix;
+    uniform mat4 u_normalMatrix;
+    varying vec3 v_Normal;
+    varying vec3 v_PositionInWorld;
+    varying vec2 v_TexCoord;
+    void main(){
+        gl_Position = u_MvpMatrix * a_Position;
+        v_PositionInWorld = (u_modelMatrix * a_Position).xyz; 
+        v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
+        v_TexCoord = a_TexCoord;
+    }    
+`;
+
+var FSHADER_SOURCE = `
+    precision mediump float;
+    uniform vec3 u_LightPosition;
+    uniform vec3 u_ViewPosition;
+    uniform float u_Ka;
+    uniform float u_Kd;
+    uniform float u_Ks;
+    uniform float u_shininess;
+    uniform vec3 u_Color;
+    varying vec3 v_Normal;
+    varying vec3 v_PositionInWorld;
+    varying vec2 v_TexCoord;
+    uniform sampler2D u_Sampler;
+    void main(){
+
+        vec3 texColor = texture2D( u_Sampler, v_TexCoord ).rgb;
+        if(texColor == vec3(0.0, 0.0, 0.0)) {
+            texColor = u_Color;
+        }
+        
+        vec3 ambientLightColor = texColor;
+        vec3 diffuseLightColor = texColor;
+        // assume white specular light (you can also input it from ouside)
+        vec3 specularLightColor = vec3(1.0, 1.0, 1.0);        
+
+        vec3 ambient = ambientLightColor * u_Ka;
+
+        vec3 normal = normalize(v_Normal);
+        vec3 lightDirection = normalize(u_LightPosition - v_PositionInWorld);
+        float nDotL = max(dot(lightDirection, normal), 0.0);
+        vec3 diffuse = diffuseLightColor * u_Kd * nDotL;
+
+        vec3 specular = vec3(0.0, 0.0, 0.0);
+        if(nDotL > 0.0) {
+            vec3 R = reflect(-lightDirection, normal);
+            // V: the vector, point to viewer       
+            vec3 V = normalize(u_ViewPosition - v_PositionInWorld); 
+            float specAngle = clamp(dot(R, V), 0.0, 1.0);
+            specular = u_Ks * pow(specAngle, u_shininess) * specularLightColor; 
+        }
+
+        gl_FragColor = vec4( ambient + diffuse + specular, 1.0 );
+    }
+`;
+
+var VSHADER_SOURCE_ENVCUBE = `
+  attribute vec4 a_Position;
+  varying vec4 v_Position;
+  void main() {
+    v_Position = a_Position;
+    gl_Position = a_Position;
+  } 
+`;
+
+var FSHADER_SOURCE_ENVCUBE = `
+  precision mediump float;
+  uniform samplerCube u_envCubeMap;
+  uniform mat4 u_viewDirectionProjectionInverse;
+  varying vec4 v_Position;
+  void main() {
+    vec4 t = u_viewDirectionProjectionInverse * v_Position;
+    gl_FragColor = textureCube(u_envCubeMap, normalize(t.xyz / t.w));
+  }
+`;
+
 function compileShader(gl, vShaderText, fShaderText) {
     //////Build vertex and fragment shader objects
     var vertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -102,20 +185,25 @@ var mouseDragging = false;
 var angleX = 0,
     angleY = 0;
 var gl, canvas;
-var modelMatrix;
-var normalMatrix;
 var nVertex;
-var cameraX = 3,
-    cameraY = 3,
-    cameraZ = 7;
+var cameraX = 10,
+    cameraY = 5,
+    cameraZ = 10;
+var cameraDirX = -1,
+    cameraDirY = 0,
+    cameraDirZ = -1;
 var lightX = -4,
     lightY = 3,
     lightZ = 0;
-var offScreenWidth = 2048,
-    offScreenHeight = 2048;
+var quadObj;
+var cubeMapTex;
 var textures = {};
-var fbo;
 
+var fbo;
+var offScreenWidth = 800,
+    offScreenHeight = 800;
+
+//interface value
 var room = 0;
 var tx = 0;
 var tz = 0;
@@ -128,74 +216,214 @@ async function main() {
         return;
     }
 
-    //setup shaders and prepare shader variables
-    shadowProgram = compileShader(
+    var quad = new Float32Array([
+        -1, -1, 1, 1, -1, 1, -1, 1, 1, -1, 1, 1, 1, -1, 1, 1, 1, 1,
+    ]); //just a quad
+    programEnvCube = compileShader(
         gl,
-        VSHADER_SHADOW_SOURCE,
-        FSHADER_SHADOW_SOURCE
+        VSHADER_SOURCE_ENVCUBE,
+        FSHADER_SOURCE_ENVCUBE
     );
-    shadowProgram.a_Position = gl.getAttribLocation(
-        shadowProgram,
+    programEnvCube.a_Position = gl.getAttribLocation(
+        programEnvCube,
         "a_Position"
     );
-    shadowProgram.u_MvpMatrix = gl.getUniformLocation(
-        shadowProgram,
-        "u_MvpMatrix"
+    programEnvCube.u_envCubeMap = gl.getUniformLocation(
+        programEnvCube,
+        "u_envCubeMap"
+    );
+    programEnvCube.u_viewDirectionProjectionInverse = gl.getUniformLocation(
+        programEnvCube,
+        "u_viewDirectionProjectionInverse"
+    );
+
+    quadObj = initVertexBufferForLaterUse(gl, quad);
+
+    cubeMapTex = initCubeTexture(
+        "./cubemap/pos-x.jpg",
+        "./cubemap/neg-x.jpg",
+        "./cubemap/pos-y.jpg",
+        "./cubemap/neg-y.jpg",
+        "./cubemap/pos-z.jpg",
+        "./cubemap/neg-z.jpg",
+        512,
+        512
     );
 
     program = compileShader(gl, VSHADER_SOURCE, FSHADER_SOURCE);
+
     program.a_Position = gl.getAttribLocation(program, "a_Position");
-    program.a_TexCoord = gl.getAttribLocation(program, "a_TexCoord");
     program.a_Normal = gl.getAttribLocation(program, "a_Normal");
     program.u_MvpMatrix = gl.getUniformLocation(program, "u_MvpMatrix");
     program.u_modelMatrix = gl.getUniformLocation(program, "u_modelMatrix");
     program.u_normalMatrix = gl.getUniformLocation(program, "u_normalMatrix");
-    program.u_LightMdlMatrix = gl.getUniformLocation(
-        program,
-        "u_LightMdlMatrix"
-    );
+    program.u_LightPosition = gl.getUniformLocation(program, "u_LightPosition");
     program.u_ViewPosition = gl.getUniformLocation(program, "u_ViewPosition");
-    program.u_MvpMatrixOfLight = gl.getUniformLocation(
-        program,
-        "u_MvpMatrixOfLight"
-    );
     program.u_Ka = gl.getUniformLocation(program, "u_Ka");
     program.u_Kd = gl.getUniformLocation(program, "u_Kd");
     program.u_Ks = gl.getUniformLocation(program, "u_Ks");
     program.u_shininess = gl.getUniformLocation(program, "u_shininess");
-    program.u_ShadowMap = gl.getUniformLocation(program, "u_ShadowMap");
     program.u_Color = gl.getUniformLocation(program, "u_Color");
-
-    gl.useProgram(program);
+    program.a_TexCoord = gl.getAttribLocation(program, "a_TexCoord");
 
     fbo = initFrameBuffer(gl);
 
-    load_all_texture();
     load_all_model();
-    draw();
+    load_all_texture();
+    draw_all();
     interface();
 }
 
-async function draw() {
-    // off screen shadow
-    gl.useProgram(shadowProgram);
+function draw_all() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0, 0, offScreenWidth, offScreenHeight);
-    gl.clearColor(0.0, 0.0, 0.0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.DEPTH_TEST);
+    draw();
+    drawOneObjectOnScreen(
+        cubeObj,
+        thingMdlMatrix,
+        1.0,
+        1.0,
+        1.0,
+        "chessTex",
+        false
+    );
 
-    set_mdl();
-
-    // on scree rendering
-    gl.useProgram(program);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0.4, 0.4, 0.4, 1);
+    draw();
+    //draw thing
+    drawOneObjectOnScreen(
+        cubeObj,
+        thingMdlMatrix,
+        1.0,
+        1.0,
+        1.0,
+        "chessTex",
+        true
+    );
+}
+
+function draw() {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
+    draw_cubemap();
+
+    gl.useProgram(program);
+    set_mdl();
     draw_all_object();
+}
+
+function drawOneObjectOnScreen(
+    obj,
+    mdlMatrix,
+    colorR,
+    colorG,
+    colorB,
+    texture,
+    fbomode
+) {
+    var mvpMatrix = new Matrix4();
+    var normalMatrix = new Matrix4();
+
+    let rotateMatrix = new Matrix4();
+    rotateMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
+    rotateMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
+    var viewDir = new Vector3([cameraDirX, cameraDirY, cameraDirZ]);
+    var newViewDir = rotateMatrix.multiplyVector3(viewDir);
+
+    mvpMatrix.setPerspective(60 - room, 1, 1, 100);
+    mvpMatrix.lookAt(
+        cameraX,
+        cameraY,
+        cameraZ,
+        cameraX + newViewDir.elements[0],
+        cameraY + newViewDir.elements[1],
+        cameraZ + newViewDir.elements[2],
+        0,
+        1,
+        0
+    );
+    mvpMatrix.multiply(mdlMatrix);
+
+    //normal matrix
+    normalMatrix.setInverseOf(mdlMatrix);
+    normalMatrix.transpose();
+
+    gl.uniform3f(program.u_LightPosition, lightX, lightY, lightZ);
+    gl.uniform3f(
+        program.u_ViewPosition,
+        cameraX + newViewDir.elements[0],
+        cameraY + newViewDir.elements[1],
+        cameraZ + newViewDir.elements[2]
+    );
+    gl.uniform1f(program.u_Ka, 0.2);
+    gl.uniform1f(program.u_Kd, 0.7);
+    gl.uniform1f(program.u_Ks, 1.0);
+    gl.uniform1f(program.u_shininess, 10.0);
+    gl.uniform3f(program.u_Color, colorR, colorG, colorB);
+
+    gl.activeTexture(gl.TEXTURE0);
+    if (fbomode) {
+        gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
+    } else {
+        gl.bindTexture(gl.TEXTURE_2D, textures[texture]);
+    }
+    gl.uniform1i(program.u_Sampler, 0);
+    gl.uniformMatrix4fv(program.u_MvpMatrix, false, mvpMatrix.elements);
+    gl.uniformMatrix4fv(program.u_modelMatrix, false, mdlMatrix.elements);
+    gl.uniformMatrix4fv(program.u_normalMatrix, false, normalMatrix.elements);
+
+    for (let i = 0; i < obj.length; i++) {
+        initAttributeVariable(gl, program.a_Position, obj[i].vertexBuffer);
+        initAttributeVariable(gl, program.a_TexCoord, obj[i].texCoordBuffer);
+        initAttributeVariable(gl, program.a_Normal, obj[i].normalBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
+    }
+}
+
+function draw_cubemap() {
+    let rotateMatrix = new Matrix4();
+    rotateMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
+    rotateMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
+    var viewDir = new Vector3([cameraDirX, cameraDirY, cameraDirZ]);
+    var newViewDir = rotateMatrix.multiplyVector3(viewDir);
+
+    var vpFromCamera = new Matrix4();
+    vpFromCamera.setPerspective(60 - room, 1, 1, 15);
+    var viewMatrixRotationOnly = new Matrix4();
+    viewMatrixRotationOnly.lookAt(
+        cameraX,
+        cameraY,
+        cameraZ,
+        cameraX + newViewDir.elements[0],
+        cameraY + newViewDir.elements[1],
+        cameraZ + newViewDir.elements[2],
+        0,
+        1,
+        0
+    );
+    viewMatrixRotationOnly.elements[12] = 0; //ignore translation
+    viewMatrixRotationOnly.elements[13] = 0;
+    viewMatrixRotationOnly.elements[14] = 0;
+    vpFromCamera.multiply(viewMatrixRotationOnly);
+    var vpFromCameraInverse = vpFromCamera.invert();
+
+    //quad
+    gl.useProgram(programEnvCube);
+    gl.depthFunc(gl.LEQUAL);
+    gl.uniformMatrix4fv(
+        programEnvCube.u_viewDirectionProjectionInverse,
+        false,
+        vpFromCameraInverse.elements
+    );
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeMapTex);
+    gl.uniform1i(programEnvCube.u_envCubeMap, 0);
+    initAttributeVariable(gl, programEnvCube.a_Position, quadObj.vertexBuffer);
+    gl.drawArrays(gl.TRIANGLES, 0, quadObj.numVertices);
 }
 
 async function load_one_model(file_path) {
@@ -257,97 +485,6 @@ async function load_all_texture() {
         initTexture(gl, imageTire, "tireTex");
     };
     imageTire.src = "./texture/tire.png";
-}
-
-function drawOffScreen(obj, mdlMatrix) {
-    var mvpFromLight = new Matrix4();
-    //model Matrix (part of the mvp matrix)
-    let modelMatrix = new Matrix4();
-    modelMatrix.multiply(mdlMatrix);
-    //mvp: projection * view * model matrix
-    mvpFromLight.setPerspective(
-        150,
-        (offScreenWidth / offScreenHeight) * 2,
-        1,
-        200
-    );
-    mvpFromLight.lookAt(lightX, lightY, lightZ, 0, 0, 0, 0, 1, 0);
-    mvpFromLight.multiply(modelMatrix);
-
-    gl.uniformMatrix4fv(
-        shadowProgram.u_MvpMatrix,
-        false,
-        mvpFromLight.elements
-    );
-
-    for (let i = 0; i < obj.length; i++) {
-        initAttributeVariable(
-            gl,
-            shadowProgram.a_Position,
-            obj[i].vertexBuffer
-        );
-        gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
-    }
-
-    return mvpFromLight;
-}
-
-//obj: the object components
-//mdlMatrix: the model matrix without mouse rotation
-//colorR, G, B: object color
-function drawOneObjectOnScreen(
-    obj,
-    mdlMatrix,
-    mvpFromLight,
-    colorR,
-    colorG,
-    colorB,
-    texture
-) {
-    var mvpFromCamera = new Matrix4();
-    //model Matrix (part of the mvp matrix)
-    let modelMatrix = new Matrix4();
-    modelMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
-    modelMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
-    gl.uniformMatrix4fv(program.u_LightMdlMatrix, false, modelMatrix.elements);
-    modelMatrix.multiply(mdlMatrix);
-    //mvp: projection * view * model matrix
-    mvpFromCamera.setPerspective(60 - room, 1, 1, 15);
-    mvpFromCamera.lookAt(cameraX, cameraY, cameraZ, 0, 0, -5, 0, 1, 0);
-    mvpFromCamera.multiply(modelMatrix);
-
-    //normal matrix
-    let normalMatrix = new Matrix4();
-    normalMatrix.setInverseOf(modelMatrix);
-    normalMatrix.transpose();
-
-    gl.uniform3f(program.u_ViewPosition, cameraX, cameraY, cameraZ);
-    gl.uniform1f(program.u_Ka, 0.2);
-    gl.uniform1f(program.u_Kd, 0.7);
-    gl.uniform1f(program.u_Ks, 1.0);
-    gl.uniform1f(program.u_shininess, 10.0);
-    gl.uniform1i(program.u_ShadowMap, 0);
-    gl.uniform3f(program.u_Color, colorR, colorG, colorB);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, textures[texture]);
-    gl.uniform1i(program.u_Sampler, 0);
-
-    gl.uniformMatrix4fv(program.u_MvpMatrix, false, mvpFromCamera.elements);
-    gl.uniformMatrix4fv(program.u_modelMatrix, false, modelMatrix.elements);
-    gl.uniformMatrix4fv(program.u_normalMatrix, false, normalMatrix.elements);
-    gl.uniformMatrix4fv(
-        program.u_MvpMatrixOfLight,
-        false,
-        mvpFromLight.elements
-    );
-
-    for (let i = 0; i < obj.length; i++) {
-        initAttributeVariable(gl, program.a_Position, obj[i].vertexBuffer);
-        initAttributeVariable(gl, program.a_TexCoord, obj[i].texCoordBuffer);
-        initAttributeVariable(gl, program.a_Normal, obj[i].normalBuffer);
-        gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
-    }
 }
 
 function parseOBJ(text) {
@@ -492,65 +629,90 @@ function parseOBJ(text) {
     };
 }
 
-function interface() {
-    canvas.onmousedown = function (ev) {
-        mouseDown(ev);
-    };
-    canvas.onmousemove = function (ev) {
-        mouseMove(ev);
-    };
-    canvas.onmouseup = function (ev) {
-        mouseUp(ev);
-    };
-    var Slider = document.getElementById("Room");
-    Slider.oninput = function () {
-        room = this.value;
-        draw();
-    };
-    //setup the call back function of tx Sliders
-    var Slider = document.getElementById("Translate-X");
-    Slider.oninput = function () {
-        tx = this.value / 100.0;
-        draw();
-    };
+function initCubeTexture(
+    posXName,
+    negXName,
+    posYName,
+    negYName,
+    posZName,
+    negZName,
+    imgWidth,
+    imgHeight
+) {
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
 
-    //setup the call back function of ty Sliders
-    var Slider = document.getElementById("Translate-Z");
-    Slider.oninput = function () {
-        tz = this.value / 100.0;
-        draw();
-    };
+    const faceInfos = [
+        {
+            target: gl.TEXTURE_CUBE_MAP_POSITIVE_X,
+            fName: posXName,
+        },
+        {
+            target: gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
+            fName: negXName,
+        },
+        {
+            target: gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
+            fName: posYName,
+        },
+        {
+            target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
+            fName: negYName,
+        },
+        {
+            target: gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
+            fName: posZName,
+        },
+        {
+            target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
+            fName: negZName,
+        },
+    ];
+    faceInfos.forEach((faceInfo) => {
+        const { target, fName } = faceInfo;
+        // setup each face so it's immediately renderable
+        gl.texImage2D(
+            target,
+            0,
+            gl.RGBA,
+            imgWidth,
+            imgHeight,
+            0,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            null
+        );
+
+        var image = new Image();
+        image.onload = function () {
+            gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+            gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+            gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+            setTimeout(() => {}, "1000");
+        };
+        image.src = fName;
+    });
+    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+    gl.texParameteri(
+        gl.TEXTURE_CUBE_MAP,
+        gl.TEXTURE_MIN_FILTER,
+        gl.LINEAR_MIPMAP_LINEAR
+    );
+
+    return texture;
 }
 
-function mouseDown(ev) {
-    var x = ev.clientX;
-    var y = ev.clientY;
-    var rect = ev.target.getBoundingClientRect();
-    if (rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom) {
-        mouseLastX = x;
-        mouseLastY = y;
-        mouseDragging = true;
-    }
-}
+function initTexture(gl, img, texKey) {
+    var tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
 
-function mouseUp(ev) {
-    mouseDragging = false;
-}
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    // Set the parameters so we can render any size image.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    // Upload the image into the texture.
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
 
-function mouseMove(ev) {
-    var x = ev.clientX;
-    var y = ev.clientY;
-    if (mouseDragging) {
-        var factor = 100 / canvas.height; //100 determine the spped you rotate the object
-        var dx = factor * (x - mouseLastX);
-        var dy = factor * (y - mouseLastY);
-
-        angleX += dx; //yes, x for y, y for x, this is right
-        angleY += dy;
-    }
-    mouseLastX = x;
-    mouseLastY = y;
-
+    textures[texKey] = tex;
     draw();
 }
 
@@ -601,16 +763,92 @@ function initFrameBuffer(gl) {
     return frameBuffer;
 }
 
-function initTexture(gl, img, texKey) {
-    var tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
+function interface() {
+    canvas.onmousedown = function (ev) {
+        mouseDown(ev);
+        draw_all();
+    };
+    canvas.onmousemove = function (ev) {
+        mouseMove(ev);
+        draw_all();
+    };
+    canvas.onmouseup = function (ev) {
+        mouseUp(ev);
+        draw_all();
+    };
+    document.onkeydown = function (ev) {
+        keydown(ev);
+        draw_all();
+    };
+    var Slider = document.getElementById("Room");
+    Slider.oninput = function () {
+        room = this.value;
+        draw_all();
+    };
+    //setup the call back function of tx Sliders
+    var Slider = document.getElementById("Translate-X");
+    Slider.oninput = function () {
+        tx = this.value / 100.0;
+        draw_all();
+    };
 
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
-    // Set the parameters so we can render any size image.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    // Upload the image into the texture.
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    //setup the call back function of ty Sliders
+    var Slider = document.getElementById("Translate-Z");
+    Slider.oninput = function () {
+        tz = this.value / 100.0;
+        draw_all();
+    };
+}
 
-    textures[texKey] = tex;
+function mouseDown(ev) {
+    var x = ev.clientX;
+    var y = ev.clientY;
+    var rect = ev.target.getBoundingClientRect();
+    if (rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom) {
+        mouseLastX = x;
+        mouseLastY = y;
+        mouseDragging = true;
+    }
+}
+
+function mouseUp(ev) {
+    mouseDragging = false;
+}
+
+function mouseMove(ev) {
+    var x = ev.clientX;
+    var y = ev.clientY;
+    if (mouseDragging) {
+        var factor = 100 / canvas.height; //100 determine the spped you rotate the object
+        var dx = factor * (x - mouseLastX);
+        var dy = factor * (y - mouseLastY);
+
+        angleX += dx; //yes, x for y, y for x, this is right
+        angleY += dy;
+    }
+    mouseLastX = x;
+    mouseLastY = y;
+
+    draw();
+}
+
+function keydown(ev) {
+    //implment keydown event here
+    let rotateMatrix = new Matrix4();
+    rotateMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
+    rotateMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
+    var viewDir = new Vector3([cameraDirX, cameraDirY, cameraDirZ]);
+    var newViewDir = rotateMatrix.multiplyVector3(viewDir);
+
+    if (ev.key == "w") {
+        cameraX += newViewDir.elements[0] * 0.2;
+        cameraY += newViewDir.elements[1] * 0.2;
+        cameraZ += newViewDir.elements[2] * 0.2;
+    } else if (ev.key == "s") {
+        cameraX -= newViewDir.elements[0] * 0.2;
+        cameraY -= newViewDir.elements[1] * 0.2;
+        cameraZ -= newViewDir.elements[2] * 0.2;
+    }
+
     draw();
 }
