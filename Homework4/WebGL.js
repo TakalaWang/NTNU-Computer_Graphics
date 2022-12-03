@@ -688,7 +688,7 @@ function initCubeTexture(
             gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
             gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
             gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-            setTimeout(() => {}, "1000");
+            setTimeout(() => {}, 500);
         };
         image.src = fName;
     });
