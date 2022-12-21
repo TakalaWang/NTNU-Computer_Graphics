@@ -1,31 +1,77 @@
-var mouseDragging = false;
 var angleX = 0,
     angleY = 0;
 var gl, canvas;
-var nVertex;
-var cameraX = 10,
-    cameraY = 5,
-    cameraZ = 10;
-var cameraDirX = -1,
+
+var playerX = 0,
+    playerY = 0,
+    playerZ = 0;
+var firstcameraX = 0,
+    firstcameraY = 4,
+    firstcameraZ = 0;
+var thirdcameraX = -3,
+    thirdcameraY = 6,
+    thirdcameraZ = 0;
+var cameraDirX = 1,
     cameraDirY = 0,
-    cameraDirZ = -1;
-var lightX = 2,
-    lightY = 5,
-    lightZ = 0;
+    cameraDirZ = 0;
+var targetX = 22 + Math.random() * 30,
+    targetY = 6 + Math.random() * 10,
+    targetZ = -13 + Math.random() * 26;
+var wallX = 20,
+    wallZ = 0;
+var wall_offset = 0;
+var wall_move = 0.3;
+
+var lightX = -5,
+    lightY = 15,
+    lightZ = 10;
 var quadObj;
 var cubeMapTex;
 var textures = {};
 
-var offScreenWidth = 1024,
-    offScreenHeight = 1024;
-var shadowfbo;
+var offScreenWidth = 2048,
+    offScreenHeight = 2048;
 
-//interface value
-var room = 0;
-var tx = 0;
-var tz = 0;
+var shadowfbo;
+var reflectfbo;
+
+var player_step = 0.3;
+var third_view = false;
+var view_enlarge = false;
+var view_size = 60;
+
+var gun_back = 0;
+var target_hit = false;
+var hit_size = 0;
+var target_flip = 0;
+var target_rotate = 0,
+    target_rotateY = 0,
+    target_rotateZ = 0;
+
+var game_start = false;
+var game_point = 0;
+var game_time = 60;
+
+const inits = [];
+inits.push(main);
+inits.push(load_all_texture);
+
+window.onload = async () => {
+    for (const func of inits) {
+        await func();
+    }
+};
 
 async function main() {
+    game_time = 60;
+    game_point = 0;
+    var timer = setInterval(() => {
+        game_time--;
+    }, 1000);
+    setInterval(() => {
+        tick;
+    }, 1);
+
     canvas = document.getElementById("webgl");
     gl = canvas.getContext("webgl2");
     if (!gl) {
@@ -33,90 +79,161 @@ async function main() {
         return;
     }
 
-    var quad = new Float32Array([
-        -1, -1, 1, 1, -1, 1, -1, 1, 1, -1, 1, 1, 1, -1, 1, 1, 1, 1,
-    ]); //just a quad
-    programEnvCube = compileShader(
-        gl,
-        VSHADER_SOURCE_ENVCUBE,
-        FSHADER_SOURCE_ENVCUBE
-    );
-    programEnvCube.a_Position = gl.getAttribLocation(
-        programEnvCube,
-        "a_Position"
-    );
-    programEnvCube.u_envCubeMap = gl.getUniformLocation(
-        programEnvCube,
-        "u_envCubeMap"
-    );
-    programEnvCube.u_viewDirectionProjectionInverse = gl.getUniformLocation(
-        programEnvCube,
-        "u_viewDirectionProjectionInverse"
-    );
-
-    quadObj = initVertexBufferForLaterUse(gl, quad);
-
-    cubeMapTex = initCubeTexture(
-        "./cubemap/pos-x.jpg",
-        "./cubemap/neg-x.jpg",
-        "./cubemap/pos-y.jpg",
-        "./cubemap/neg-y.jpg",
-        "./cubemap/pos-z.jpg",
-        "./cubemap/neg-z.jpg",
-        512,
-        512
-    );
-
-    shadowProgram = compileShader(
-        gl,
-        VSHADER_SHADOW_SOURCE,
-        FSHADER_SHADOW_SOURCE
-    );
-    shadowProgram.a_Position = gl.getAttribLocation(
-        shadowProgram,
-        "a_Position"
-    );
-    shadowProgram.u_MvpMatrix = gl.getUniformLocation(
-        shadowProgram,
-        "u_MvpMatrix"
-    );
-
-    program = compileShader(gl, VSHADER_SOURCE, FSHADER_SOURCE);
-    program.a_Position = gl.getAttribLocation(program, "a_Position");
-    program.a_Normal = gl.getAttribLocation(program, "a_Normal");
-    program.u_MvpMatrix = gl.getUniformLocation(program, "u_MvpMatrix");
-    program.u_modelMatrix = gl.getUniformLocation(program, "u_modelMatrix");
-    program.u_normalMatrix = gl.getUniformLocation(program, "u_normalMatrix");
-    program.u_LightPosition = gl.getUniformLocation(program, "u_LightPosition");
-    program.u_ViewPosition = gl.getUniformLocation(program, "u_ViewPosition");
-    program.u_Ka = gl.getUniformLocation(program, "u_Ka");
-    program.u_Kd = gl.getUniformLocation(program, "u_Kd");
-    program.u_Ks = gl.getUniformLocation(program, "u_Ks");
-    program.u_shininess = gl.getUniformLocation(program, "u_shininess");
-    program.u_Color = gl.getUniformLocation(program, "u_Color");
-    program.u_ShadowMap = gl.getUniformLocation(program, "u_ShadowMap");
-    program.u_MvpMatrixOfLight = gl.getUniformLocation(
-        program,
-        "u_MvpMatrixOfLight"
-    );
-    program.a_TexCoord = gl.getAttribLocation(program, "a_TexCoord");
+    init_dynamic_reflection_program();
+    init_cubemap_program();
+    init_shadow_program();
+    init_normal_porgram();
 
     shadowfbo = initFrameBuffer();
+    reflectfbo = initFrameBufferForCubemapRendering();
 
     load_all_model();
     load_all_texture();
     draw_all();
-    interface();
+
+    var wall_dir = -1;
+
+    var tick = function () {
+        if (wall_offset < -13) {
+            wall_dir = 1;
+        }
+        if (wall_offset > 13) {
+            wall_dir = -1;
+        }
+
+        wall_offset += wall_move * wall_dir;
+
+        if (gun_back > 0) {
+            gun_back -= 0.6;
+        } else {
+            gun_back = 0;
+        }
+
+        if (target_hit) {
+            target_flip += 3;
+        }
+        if (hit_size > 0) {
+            console.log("hit size");
+            document.getElementById("hit").style.display = "block";
+            document.getElementById("hit-top_right").style.width =
+                hit_size * 7 + "px";
+            document.getElementById("hit-top_left").style.width =
+                hit_size * 7 + "px";
+            document.getElementById("hit-bottom_right").style.width =
+                hit_size * 7 + "px";
+            document.getElementById("hit-bottom_left").style.width =
+                hit_size * 7 + "px";
+            hit_size -= 0.3;
+        } else {
+            document.getElementById("hit").style.display = "none";
+        }
+
+        if (view_enlarge) {
+            if (view_size > 30) {
+                view_size -= 2;
+            }
+            player_step = 0.1;
+            document.getElementById("aim").style.display = "flex";
+            document.getElementById("normal").style.display = "none";
+        } else {
+            if (view_size < 60) {
+                view_size += 2;
+            }
+            player_step = 0.2;
+            document.getElementById("aim").style.display = "none";
+            document.getElementById("normal").style.display = "block";
+        }
+
+        if (target_flip >= 90) {
+            target_hit = false;
+            target_flip = 0;
+            targetX = 22 + Math.random() * 30;
+            targetY = 6 + Math.random() * 10;
+            targetZ = -13 + Math.random() * 26;
+        }
+
+        if (!game_start) {
+            game_time = 60;
+        }
+
+        if (game_time <= 30) {
+            target_rotate += 2;
+            target_rotate %= 360;
+            target_rotateY = 3 * Math.cos((target_rotate / 180) * Math.PI);
+            target_rotateZ = 3 * Math.sin((target_rotate / 180) * Math.PI);
+        }
+
+        document.getElementById("timer").innerText =
+            "Time:" + (game_time <= 60 ? game_time : 60);
+        document.getElementById("score").innerText = "Score:" + game_point;
+
+        if (game_time <= 0) {
+            clearInterval(timer);
+            game_time = 0;
+            document.getElementById("shooter").style.display = "none";
+            document.getElementById("timeup").style.display = "block";
+            document.getElementById("timeup").innerText =
+                "TIME UP!\n" + "Score:" + game_point;
+        } else {
+            draw_all();
+        }
+
+        requestAnimationFrame(tick);
+    };
+    tick();
 }
 
 function draw_all() {
+    var viewDir = new Vector3([cameraDirX, cameraDirY, cameraDirZ]);
+    var rotateMatrix = new Matrix4();
+    rotateMatrix.setRotate(angleX, 0, -1, 0); //for mouse rotation
+    rotateMatrix.rotate(angleY, 0, 0, -1); //for mouse rotation
+    var newViewDir = rotateMatrix.multiplyVector3(viewDir);
+
+    var vMatrix = new Matrix4();
+    var pMatrix = new Matrix4();
+    pMatrix.setPerspective(view_size, 1, 1, 1000);
+
+    if (third_view) {
+        vMatrix.lookAt(
+            thirdcameraX,
+            thirdcameraY,
+            thirdcameraZ,
+            thirdcameraX + newViewDir.elements[0],
+            thirdcameraY + newViewDir.elements[1],
+            thirdcameraZ + newViewDir.elements[2],
+            0,
+            1,
+            0
+        );
+    } else {
+        vMatrix.lookAt(
+            firstcameraX,
+            firstcameraY,
+            firstcameraZ,
+            firstcameraX + newViewDir.elements[0],
+            firstcameraY + newViewDir.elements[1],
+            firstcameraZ + newViewDir.elements[2],
+            0,
+            1,
+            0
+        );
+    }
+
+    var vpMatrix = new Matrix4();
+    vpMatrix.set(pMatrix);
+    vpMatrix.multiply(vMatrix);
+
+    set_mdl();
     gl.bindFramebuffer(gl.FRAMEBUFFER, shadowfbo);
     gl.viewport(0, 0, offScreenWidth, offScreenHeight);
     draw_shadow();
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.width);
-    draw_world();
+    gl.viewport(0, -275, canvas.width, canvas.width);
+    draw_world(vMatrix, pMatrix, vpMatrix);
+
+    draw_all_reflection_object(vpMatrix);
 }
 
 function draw_shadow() {
@@ -124,121 +241,26 @@ function draw_shadow() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    gl.useProgram(shadowProgram);
-    draw_shadow_from_light();
+    draw_all_shadow();
 }
 
-function draw_world() {
+function draw_world(vMatrix, pMatrix, vpMatrix) {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    draw_cubemap(cubeMapTex);
+    draw_cubemap(cubeMapTex, vMatrix, pMatrix);
 
-    gl.useProgram(program);
-    set_mdl();
-    draw_all_object();
+    draw_all_object(vpMatrix);
 }
 
-function drawOneObjectOnScreen(
-    obj,
-    mdlMatrix,
-    mvpFromLight,
-    colorR,
-    colorG,
-    colorB,
-    texture
-) {
-    var mvpMatrix = new Matrix4();
-    var normalMatrix = new Matrix4();
-
-    let rotateMatrix = new Matrix4();
-    rotateMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
-    rotateMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
-    var viewDir = new Vector3([cameraDirX, cameraDirY, cameraDirZ]);
-    var newViewDir = rotateMatrix.multiplyVector3(viewDir);
-
-    mvpMatrix.setPerspective(60, 1, 1, 100);
-    mvpMatrix.lookAt(
-        cameraX,
-        cameraY,
-        cameraZ,
-        cameraX + newViewDir.elements[0],
-        cameraY + newViewDir.elements[1],
-        cameraZ + newViewDir.elements[2],
-        0,
-        1,
-        0
-    );
-    mvpMatrix.multiply(mdlMatrix);
-
-    //normal matrix
-    normalMatrix.setInverseOf(mdlMatrix);
-    normalMatrix.transpose();
-
-    gl.uniform3f(program.u_LightPosition, lightX, lightY, lightZ);
-    gl.uniform3f(
-        program.u_ViewPosition,
-        cameraX + newViewDir.elements[0],
-        cameraY + newViewDir.elements[1],
-        cameraZ + newViewDir.elements[2]
-    );
-    gl.uniform1f(program.u_Ka, 0.4);
-    gl.uniform1f(program.u_Kd, 0.7);
-    gl.uniform1f(program.u_Ks, 1.0);
-    gl.uniform1f(program.u_shininess, 10.0);
-    gl.uniform3f(program.u_Color, colorR, colorG, colorB);
-
-    gl.uniformMatrix4fv(program.u_MvpMatrix, false, mvpMatrix.elements);
-    gl.uniformMatrix4fv(program.u_modelMatrix, false, mdlMatrix.elements);
-    gl.uniformMatrix4fv(program.u_normalMatrix, false, normalMatrix.elements);
-    gl.uniformMatrix4fv(
-        program.u_MvpMatrixOfLight,
-        false,
-        mvpFromLight.elements
-    );
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, textures[texture]);
-    gl.uniform1i(program.u_Sampler, 0);
-
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, shadowfbo.texture);
-    gl.uniform1i(program.u_ShadowMap, 1);
-
-    for (let i = 0; i < obj.length; i++) {
-        initAttributeVariable(gl, program.a_Position, obj[i].vertexBuffer);
-        initAttributeVariable(gl, program.a_TexCoord, obj[i].texCoordBuffer);
-        initAttributeVariable(gl, program.a_Normal, obj[i].normalBuffer);
-        gl.drawArrays(gl.TRIANGLES, 0, obj[i].numVertices);
-    }
-}
-
-function draw_cubemap(Tex) {
-    let rotateMatrix = new Matrix4();
-    rotateMatrix.setRotate(angleY, 1, 0, 0); //for mouse rotation
-    rotateMatrix.rotate(angleX, 0, 1, 0); //for mouse rotation
-    var viewDir = new Vector3([cameraDirX, cameraDirY, cameraDirZ]);
-    var newViewDir = rotateMatrix.multiplyVector3(viewDir);
-
+function draw_cubemap(Tex, vMatrix, pMatrix) {
     var vpFromCamera = new Matrix4();
-    vpFromCamera.setPerspective(60, 1, 1, 15);
-    var viewMatrixRotationOnly = new Matrix4();
-    viewMatrixRotationOnly.lookAt(
-        cameraX,
-        cameraY,
-        cameraZ,
-        cameraX + newViewDir.elements[0],
-        cameraY + newViewDir.elements[1],
-        cameraZ + newViewDir.elements[2],
-        0,
-        1,
-        0
-    );
-    viewMatrixRotationOnly.elements[12] = 0; //ignore translation
-    viewMatrixRotationOnly.elements[13] = 0;
-    viewMatrixRotationOnly.elements[14] = 0;
-    vpFromCamera.multiply(viewMatrixRotationOnly);
+    vpFromCamera.set(pMatrix);
+    vMatrix.elements[12] = 0; //ignore translation
+    vMatrix.elements[13] = 0;
+    vMatrix.elements[14] = 0;
+    vpFromCamera.multiply(vMatrix);
     var vpFromCameraInverse = vpFromCamera.invert();
 
     //quad
@@ -256,65 +278,36 @@ function draw_cubemap(Tex) {
     gl.drawArrays(gl.TRIANGLES, 0, quadObj.numVertices);
 }
 
-async function load_one_model(file_path) {
-    obj_data = [];
-    response = await fetch(file_path);
-    text = await response.text();
-    obj = parseOBJ(text);
-    for (let i = 0; i < obj.geometries.length; i++) {
-        let o = initVertexBufferForLaterUse(
-            gl,
-            obj.geometries[i].data.position,
-            obj.geometries[i].data.normal,
-            obj.geometries[i].data.texcoord
-        );
-        obj_data.push(o);
-    }
-    return obj_data;
-}
-
 async function load_all_texture() {
-    var imageChess = new Image();
-    imageChess.onload = function () {
-        initTexture(gl, imageChess, "chessTex");
+    var imagePlayer = new Image();
+    imagePlayer.onload = function () {
+        initTexture(gl, imagePlayer, "playerTex");
     };
-    imageChess.src = "./texture/chess.jpg";
+    imagePlayer.src = "./texture/player.png";
 
     var imageGround = new Image();
     imageGround.onload = function () {
         initTexture(gl, imageGround, "groundTex");
     };
-    imageGround.src = "./texture/ground.jpeg";
+    imageGround.src = "./texture/ground.png";
 
-    var imageMirror = new Image();
-    imageMirror.onload = function () {
-        initTexture(gl, imageMirror, "mirrorTex");
+    var imagetarget = new Image();
+    imagetarget.onload = function () {
+        initTexture(gl, imagetarget, "targetTex");
     };
-    imageMirror.src = "./texture/mirror.jpg";
+    imagetarget.src = "./texture/target.png";
 
-    var imageCat = new Image();
-    imageCat.onload = function () {
-        initTexture(gl, imageCat, "catTex");
+    var imagemirror = new Image();
+    imagemirror.onload = function () {
+        initTexture(gl, imagemirror, "mirrorTex");
     };
-    imageCat.src = "./texture/cat.jpg";
+    imagemirror.src = "./texture/mirror.jpg";
 
-    var imageJoint = new Image();
-    imageJoint.onload = function () {
-        initTexture(gl, imageJoint, "jointTex");
+    var imagewall = new Image();
+    imagewall.onload = function () {
+        initTexture(gl, imagewall, "wallTex");
     };
-    imageJoint.src = "./texture/joint.png";
-
-    var imageWood = new Image();
-    imageWood.onload = function () {
-        initTexture(gl, imageWood, "woodTex");
-    };
-    imageWood.src = "./texture/wood.jpeg";
-
-    var imageTire = new Image();
-    imageTire.onload = function () {
-        initTexture(gl, imageTire, "tireTex");
-    };
-    imageTire.src = "./texture/tire.png";
+    imagewall.src = "./texture/wall.png";
 }
 
 function initTexture(gl, img, texKey) {

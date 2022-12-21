@@ -2,19 +2,61 @@
 <html>
     <head>
         <meta charset="utf-8" />
-        <title>WebPage Title</title>
+        <title>Shooter Game</title>
+        <link rel="stylesheet" href="UI.css" />
     </head>
 
-    <body onload="main()">
-        <canvas id="webgl" width="1425" height="880">
-            Please use a browser that support "canvas"
-        </canvas>
+    <body>
+        <div class="wrapper">
+            <div class="game">
+                <canvas id="webgl" width="1300" height="750">
+                    Please use a browser that support "canvas"
+                </canvas>
+                <div id="introduce">
+                    <p>
+                        This is a shooter game
+                        <br />
+                        Shoot the target in 1 min and you will get more point if
+                        you shoot center closer
+                        <br />
+                        move: WASD &nbsp &nbsp shoot: left click &nbsp &nbsp
+                        zoom: right click &nbsp &nbsp switch TP: T
+                    </p>
+                </div>
+                <div id="start">Click to Start</div>
+                <div id="timeup">TIME UP!</div>
+                <div id="shooter">
+                    <div id="aim">
+                        <div id="crosshair"></div>
+                        <div id="outer_corsshair"></div>
+                    </div>
+                    <div id="normal">
+                        <div id="normal-top"></div>
+                        <div id="normal-right"></div>
+                        <div id="normal-bottom"></div>
+                        <div id="normal-left"></div>
+                    </div>
+                    <div id="hit">
+                        <div id="hit-top_right"></div>
+                        <div id="hit-top_left"></div>
+                        <div id="hit-bottom_right"></div>
+                        <div id="hit-bottom_left"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="scoreboard">
+                <span id="timer">Time:</span>
+                <br />
+                <span id="score">Score:</span>
+            </div>
+        </div>
 
         <script src="./src/cuon-matrix.js"></script>
+        <script src="./src/WebGL.js"></script>
+        <script src="./src/init_program.js"></script>
         <script src="./src/cope.js"></script>
         <script src="./src/interface.js"></script>
         <script src="./src/shader.js"></script>
         <script src="./src/set_mdl.js"></script>
-        <script src="./src/WebGL.js"></script>
     </body>
 </html>

@@ -353,12 +353,7 @@ function drawOneObjectOnScreen(
     normalMatrix.transpose();
 
     gl.uniform3f(program.u_LightPosition, lightX, lightY, lightZ);
-    gl.uniform3f(
-        program.u_ViewPosition,
-        cameraX + newViewDir.elements[0],
-        cameraY + newViewDir.elements[1],
-        cameraZ + newViewDir.elements[2]
-    );
+    gl.uniform3f(program.u_ViewPosition, cameraX, cameraY, cameraZ);
     gl.uniform1f(program.u_Ka, 0.2);
     gl.uniform1f(program.u_Kd, 0.7);
     gl.uniform1f(program.u_Ks, 1.0);

@@ -39,7 +39,7 @@ var FSHADER_SOURCE = `
 
     uniform sampler2D u_ShadowMap;
     varying vec4 v_PositionFromLight;
-    const float deMachThreshold = 0.005;
+    const float deMachThreshold = 0.001;
 
     float unpack(const in vec4 rgbaDepth) {
         const vec4 bitShift = vec4(1.0, 1.0/256.0, 1.0/(256.0*256.0), 1.0/(256.0*256.0*256.0));
@@ -87,21 +87,21 @@ var FSHADER_SOURCE = `
 
 
 
-        vec3 shadowCoord = (v_positionFromLight.xyz/v_positionFromLight.w)/2.0 + 0.5;
+        vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
         float shadows = 0.0;
         float opacity = 0.6;
         float texelSize = 1.0/2048.0;
         vec4 rgbaDepth;
-        for(float y = -1.5; y <= 1.5; y += 1.0){
-            for(float x = -1.5; x <= 1.5; x += 1.0){
-                rgbaDepth = texture2D(u_shadowMap, shadowCoord.xy + vec2(x,y) * texelSize);
-                shadows += ( ( (shadowCoord.z - deMachThreshold) > unpack(rgbaDepth) ) ? 1.0 : 0.3 );
+        for(float y = -3.0; y <= 3.0; y += 1.0){
+            for(float x = -3.0; x <= 3.0; x += 1.0){
+                rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy + vec2(x,y) * texelSize);
+                shadows += ( ( (shadowCoord.z - deMachThreshold) > unpack(rgbaDepth) ) ? 1.0 : 0.1 );
             }
         }
-        shadows /= 16.0;
+        shadows /= 36.0;
         float visibility = min(opacity + (1.0 - shadows), 1.0);
         specular = visibility < 1.0 ? vec3(0.0, 0.0, 0.0): specular;
-        gl_FragColor = vec4( (ambient + diffuse + specular) * visibility, v_color.a);
+        gl_FragColor = vec4( (ambient + diffuse + specular) * visibility, texture2D( u_Sampler, v_TexCoord ).a);
     }
 `;
 
@@ -147,3 +147,36 @@ var FSHADER_SHADOW_SOURCE = `
         gl_FragColor = pack(gl_FragCoord.z);
     }
   `;
+
+var VSHADER_SOURCE_TEXTURE_ON_CUBE = `
+  attribute vec4 a_Position;
+  attribute vec4 a_Normal;
+  uniform mat4 u_MvpMatrix;
+  uniform mat4 u_modelMatrix;
+  uniform mat4 u_normalMatrix;
+  varying vec4 v_TexCoord;
+  varying vec3 v_Normal;
+  varying vec3 v_PositionInWorld;
+  void main() {
+    gl_Position = u_MvpMatrix * a_Position;
+    v_TexCoord = a_Position;
+    v_PositionInWorld = (u_modelMatrix * a_Position).xyz; 
+    v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
+  } 
+`;
+
+var FSHADER_SOURCE_TEXTURE_ON_CUBE = `
+  precision mediump float;
+  varying vec4 v_TexCoord;
+  uniform vec3 u_ViewPosition;
+  uniform vec3 u_Color;
+  uniform samplerCube u_envCubeMap;
+  varying vec3 v_Normal;
+  varying vec3 v_PositionInWorld;
+  void main() {
+    vec3 V = normalize(u_ViewPosition - v_PositionInWorld); 
+    vec3 normal = normalize(v_Normal);
+    vec3 R = reflect(-V, normal);
+    gl_FragColor = vec4(0.78 * textureCube(u_envCubeMap, R).rgb + 0.3 * u_Color, 1.0);
+  }
+`;
